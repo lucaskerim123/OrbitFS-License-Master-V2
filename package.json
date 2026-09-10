@@ -4,13 +4,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "dev": "tsx src/server.ts",
+    "build": "tsc --noEmit",
+    "start": "node dist/server.js",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "pg": "^8.23.0"
+  },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260910.1",
-    "typescript": "^5.9.2",
-    "wrangler": "^4.35.0"
+    "@types/node": "^22",
+    "@types/pg": "^8.15.5",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
   }
 }
