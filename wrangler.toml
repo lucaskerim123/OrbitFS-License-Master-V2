@@ -13,5 +13,9 @@ binding = "DB"
 database_name = "orbitfs_license_master_v2"
 database_id = "REPLACE_WITH_MASTER_D1_DATABASE_ID"
 
+[[r2_buckets]]
+binding = "RELEASES"
+bucket_name = "orbitfs-license-master-releases"
+
 [observability]
 enabled = true

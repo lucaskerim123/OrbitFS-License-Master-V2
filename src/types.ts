@@ -1,5 +1,6 @@
 export interface Env {
   DB: D1Database;
+  RELEASES?: R2Bucket;
   MASTER_API_TOKEN: string;
   BILLING_API_TOKEN: string;
   DEPLOYER_API_TOKEN: string;

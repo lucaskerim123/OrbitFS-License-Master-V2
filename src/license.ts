@@ -13,8 +13,10 @@ function newKey() {
 export async function issue(request: Request, env: Env) {
   if (!authorized(request, env.BILLING_API_TOKEN)) return json({ error: "Unauthorized" }, 401);
   const b = await request.json().catch(() => ({})) as Record<string, unknown>;
-  const orderRef = String(b.orderRef || "").trim();
+  const orderRef = String(b.orderRef || request.headers.get("x-orbitfs-order-ref") || "").trim();
   if (!orderRef) return json({ error: "orderRef is required" }, 400);
+  const existing = await env.DB.prepare("SELECT * FROM licences WHERE order_ref=? LIMIT 1").bind(orderRef).first<any>();
+  if (existing) return json({ licenceId: existing.id, status: existing.status, idempotent: true });
   const key = newKey(), id = crypto.randomUUID(), stamp = now();
   const components = (b.components || {}) as Record<string, boolean>;
   await env.DB.prepare(`INSERT INTO licences
