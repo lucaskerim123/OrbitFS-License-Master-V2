@@ -1,4 +1,5 @@
 import { randomUUID, createHash, createPrivateKey, createPublicKey, sign } from "node:crypto";
+import { gunzipSync } from "node:zlib";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Pool } from "pg";
 
@@ -97,6 +98,49 @@ async function latest(req:IncomingMessage,res:ServerResponse){
   if(!r)return json(res,404,{error:"No published release"});
   try{return json(res,200,{release:{...r,...await signedDownload(String(r.artifact_path||""))}})}catch(e:any){return json(res,503,{error:e.message||"Release artifact unavailable"});}
 }
+async function executeDeployment(req:IncomingMessage,res:ServerResponse){
+  if(!allowed(req,["billing","deployer","master"]))return json(res,401,{error:"Unauthorized"});
+  const b=await body(req), installation=String(b.installationId||b.installation?.id||"").trim(), releaseId=String(b.releaseId||"").trim();
+  const token=String(b.vercelAccessToken||"").trim();
+  if(!installation||!releaseId||!token)return json(res,400,{error:"installationId, releaseId and vercelAccessToken are required"});
+  const release=(await db.query("select * from releases where id=$1 and status='published'",[releaseId])).rows[0];
+  if(!release)return json(res,404,{error:"Published release not found"});
+  if(!release.artifact_path)return json(res,409,{error:"Release artifact is missing"});
+  const j=(await db.query("insert into deployment_jobs(id,installation_id,user_ref,binding_id,release_id,action,status,requested_by,progress,message) values($1,$2,$3,$4,$5,$6,'running',$7,5,'Deployment started') returning *",[randomUUID(),installation,String(b.userRef||b.installation?.auth_user_id||""),b.bindingId||null,releaseId,String(b.action||"deploy"),String(b.actorRef||role(req))])).rows[0];
+  try{
+    const signed=await signedDownload(String(release.artifact_path),600);
+    const ar=await fetch(signed.downloadUrl);if(!ar.ok)throw new Error("Release artifact download failed");
+    const manifest=JSON.parse(gunzipSync(Buffer.from(await ar.arrayBuffer())).toString("utf8"));
+    const teamId=String(b.vercelTeamId||b.installation?.vercel_team_id||"").trim();
+    const projectId=String(b.vercelProjectId||b.installation?.vercel_project_id||"").trim();
+    const projectName=String(b.vercelProjectName||b.installation?.vercel_project_name||`orbitfs-${installation.slice(-8)}`).trim();
+    const withTeam=(path:string)=>{const u=new URL(path,"https://api.vercel.com");if(teamId)u.searchParams.set("teamId",teamId);return u.pathname+u.search};
+    const vapi=async(path:string,init:RequestInit={})=>{const r=await fetch(`https://api.vercel.com${withTeam(path)}`,{...init,headers:{authorization:`Bearer ${token}`,"content-type":"application/json",...(init.headers||{})}});if(!r.ok)throw new Error(`Vercel API ${r.status}: ${await r.text()}`);return r.status===204?null:r.json()};
+    let project=projectId?{id:projectId,name:projectName}:null;
+    if(!project){try{project=await vapi("/v11/projects",{method:"POST",body:JSON.stringify({name:projectName,framework:"sveltekit"})})}catch(e:any){if(!String(e.message).includes("404"))throw e;project=await vapi("/v10/projects",{method:"POST",body:JSON.stringify({name:projectName,framework:"sveltekit"})})}}
+    if(!project)throw new Error("Vercel project could not be resolved");
+    await db.query("update deployment_jobs set progress=25,message='Configuring Vercel project',updated_at=now() where id=$1",[j.id]);
+    const resolvedProject=project!;
+    const env=b.env&&typeof b.env==="object"?b.env:{};for(const [k,v] of Object.entries(env)){await vapi(`/v10/projects/${encodeURIComponent(resolvedProject.id)}/env?upsert=true`,{method:"POST",body:JSON.stringify({key:k,value:String(v),type:"encrypted",target:["production","preview","development"]})})}
+    await db.query("update deployment_jobs set progress=45,message='Uploading release files',updated_at=now() where id=$1",[j.id]);
+    const files=Array.isArray(manifest.files)?manifest.files:[],uploaded:any[]=[];
+    for(const f of files){const bytes=f.encoding==="base64"?Buffer.from(f.data,"base64"):Buffer.from(String(f.data||""),"utf8");const digest=createHash("sha1").update(bytes).digest("hex");let r=await fetch(`https://api.vercel.com${withTeam("/v2/files")}`,{method:"POST",headers:{authorization:`Bearer ${token}`,"content-type":"application/octet-stream","content-length":String(bytes.length),"x-vercel-digest":digest},body:new Uint8Array(bytes)});if(!r.ok&&r.status!==409)throw new Error(`Vercel file upload failed for ${f.file||"file"}: ${await r.text()}`);uploaded.push({file:f.file,sha:digest,size:bytes.length})}
+    await db.query("update deployment_jobs set progress=75,message='Creating Vercel deployment',updated_at=now() where id=$1",[j.id]);
+    const dep=await vapi("/v13/deployments",{method:"POST",body:JSON.stringify({name:resolvedProject.name,project:resolvedProject.id,target:"production",files:uploaded,projectSettings:manifest.projectSettings||{framework:"sveltekit",buildCommand:"npm run build",installCommand:"npm ci"}})});
+    const result={jobId:j.id,projectId:resolvedProject.id,projectName:resolvedProject.name,deploymentId:dep?.id||dep?.uid||null,deploymentUrl:dep?.url?`https://${dep.url}`:null,version:release.version,releaseId};
+    await db.query("update deployment_jobs set status='completed',progress=100,message='Deployment submitted',result=$1,completed_at=now(),updated_at=now() where id=$2",[result,j.id]);await audit("deployment",j.id,"completed",String(b.actorRef||role(req)),result);return json(res,200,{ok:true,jobId:j.id,result});
+  }catch(e:any){await db.query("update deployment_jobs set status='failed',progress=100,message='Deployment failed',error=$1,completed_at=now(),updated_at=now() where id=$2",[e?.message||String(e),j.id]);await audit("deployment",j.id,"failed",String(b.actorRef||role(req)),{error:e?.message||String(e)});return json(res,502,{ok:false,jobId:j.id,error:e?.message||"Deployment failed"});}
+}
+
+async function syncDeployment(req:IncomingMessage,res:ServerResponse){
+  if(!allowed(req,["billing","deployer","master"]))return json(res,401,{error:"Unauthorized"});
+  const b=await body(req),token=String(b.vercelAccessToken||"").trim(),deploymentId=String(b.vercelDeploymentId||"").trim(),teamId=String(b.vercelTeamId||"").trim();
+  if(!token||!deploymentId)return json(res,400,{error:"vercelAccessToken and vercelDeploymentId are required"});
+  const u=new URL(`/v13/deployments/${encodeURIComponent(deploymentId)}`,"https://api.vercel.com");if(teamId)u.searchParams.set("teamId",teamId);
+  const r=await fetch(u,{headers:{authorization:`Bearer ${token}`}});if(!r.ok)return json(res,r.status>=500?502:r.status,{error:`Vercel API ${r.status}: ${await r.text()}`});
+  const d:any=await r.json(),state=String(d.readyState||d.status||"").toUpperCase();return json(res,200,{state,deploymentId,url:d.url?`https://${d.url}`:null,error:d.errorMessage||null,raw:d});
+}
+
 async function deployments(req:IncomingMessage,res:ServerResponse,id?:string){
   if(!allowed(req,["master","billing","deployer"]))return json(res,401,{error:"Unauthorized"});
   if(req.method==="GET"&&id){const r=(await db.query("select * from deployment_jobs where id=$1",[id])).rows[0];return r?json(res,200,{job:r}):json(res,404,{error:"Job not found"});}
@@ -120,6 +164,8 @@ export async function handler(req:IncomingMessage,res:ServerResponse){
     if(p==="/api/v1/releases"&&(req.method==="GET"||req.method==="POST"))return releases(req,res);
     const ra=p.match(/^\/api\/v1\/releases\/([^/]+)\/(artifact|validate|publish|control)$/);if(ra&&req.method==="POST")return ra[2]==="artifact"?artifact(req,res,decodeURIComponent(ra[1])):releaseAction(req,res,decodeURIComponent(ra[1]),ra[2]);
     if(p==="/api/v1/releases/latest"&&req.method==="GET")return latest(req,res);
+    if(p==="/api/v1/deployments/execute"&&req.method==="POST")return executeDeployment(req,res);
+    if(p==="/api/v1/deployments/sync"&&req.method==="POST")return syncDeployment(req,res);
     const dj=p.match(/^\/api\/v1\/deployments(?:\/([^/]+))?$/);if(dj)return deployments(req,res,dj[1]?decodeURIComponent(dj[1]):undefined);
     return json(res,404,{error:"Not found"});
   }catch(e:any){console.error(e);return json(res,500,{error:"Master service error",detail:e?.message||String(e)});}
