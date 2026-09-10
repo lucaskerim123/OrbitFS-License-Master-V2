@@ -2,13 +2,14 @@ import { randomUUID, createHash, createPrivateKey, createPublicKey, sign } from 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Pool } from "pg";
 
-const db = new Pool({ connectionString: process.env.DATABASE_URL, max: 5, ssl: { rejectUnauthorized: false } });
+const databaseUrl = String(process.env.DATABASE_URL || "").replace(/[?&]sslmode=[^&]+/i, "");
+const db = new Pool({ connectionString: databaseUrl, max: 5, ssl: { rejectUnauthorized: false } });
 const MASTER = process.env.MASTER_API_TOKEN || "";
 const BILLING = process.env.BILLING_API_TOKEN || "";
 const DEPLOYER = process.env.DEPLOYER_API_TOKEN || "";
 const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-const PRIVATE_KEY = process.env.ENTITLEMENT_PRIVATE_KEY_B64 || "";
+const PRIVATE_KEY = process.env.LICENSE_ENTITLEMENT_PRIVATE_KEY_B64 || process.env.ENTITLEMENT_PRIVATE_KEY_B64 || "";
 const COMPONENTS = ["orbitfs_base", "orbitfs_mcp", "orbitfs_apex", "orbitfs_studio"] as const;
 
 type Role = "master" | "billing" | "deployer";
@@ -81,7 +82,21 @@ async function artifact(req:IncomingMessage,res:ServerResponse,id:string){
   const fresh=(await db.query("update releases set artifact_path=$1,artifact_sha256=$2,artifact_size=$3,artifact_content_type=$4,updated_at=now() where id=$5 returning *",[path,digest,bytes.length,req.headers["content-type"]||"application/octet-stream",id])).rows[0];await audit("release",id,"artifact_uploaded",String(req.headers["x-actor-ref"]||"master"),{sha256:digest,size:bytes.length});return json(res,200,{release:fresh});
 }
 
-async function latest(req:IncomingMessage,res:ServerResponse){const u=new URL(req.url||"/","http://localhost"),component=u.searchParams.get("component")||"orbitfs_base",channel=u.searchParams.get("channel")||"stable",r=(await db.query("select * from releases where component=$1 and channel=$2 and status='published' order by published_at desc limit 1",[component,channel])).rows[0];return r?json(res,200,{release:r}):json(res,404,{error:"No published release"});}
+async function signedDownload(path:string,expiresIn=300){
+  if(!SUPABASE_URL||!SUPABASE_SERVICE_ROLE_KEY)throw new Error("Supabase storage is not configured");
+  const r=await fetch(`${SUPABASE_URL}/storage/v1/object/sign/orbitfs-license-master-releases/${path}`,{method:"POST",headers:{Authorization:`Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,apikey:SUPABASE_SERVICE_ROLE_KEY,"Content-Type":"application/json"},body:JSON.stringify({expiresIn})});
+  if(!r.ok)throw new Error(`Release download URL creation failed: ${await r.text()}`);
+  const j:any=await r.json();
+  const signed=j?.signedURL||j?.signedUrl||j?.signed_url;
+  if(!signed)throw new Error("Release download URL was not returned");
+  return {downloadUrl:signed.startsWith("http")?signed:`${SUPABASE_URL}/storage/v1${signed}`,expiresIn};
+}
+async function latest(req:IncomingMessage,res:ServerResponse){
+  const u=new URL(req.url||"/","http://localhost"),component=u.searchParams.get("component")||"orbitfs_base",channel=u.searchParams.get("channel")||"base";
+  const r=(await db.query("select * from releases where component=$1 and channel=$2 and status='published' order by published_at desc limit 1",[component,channel])).rows[0];
+  if(!r)return json(res,404,{error:"No published release"});
+  try{return json(res,200,{release:{...r,...await signedDownload(String(r.artifact_path||""))}})}catch(e:any){return json(res,503,{error:e.message||"Release artifact unavailable"});}
+}
 async function deployments(req:IncomingMessage,res:ServerResponse,id?:string){
   if(!allowed(req,["master","billing","deployer"]))return json(res,401,{error:"Unauthorized"});
   if(req.method==="GET"&&id){const r=(await db.query("select * from deployment_jobs where id=$1",[id])).rows[0];return r?json(res,200,{job:r}):json(res,404,{error:"Job not found"});}
@@ -97,6 +112,7 @@ export async function handler(req:IncomingMessage,res:ServerResponse){
     const u=new URL(req.url||"/","http://localhost"),p=u.pathname;
     if(p==="/health")return json(res,200,{ok:true,service:"OrbitFS License Master",version:"2.0.0",database:(await db.query("select 1")).rowCount===1,signingConfigured:!!privatePem()});
     if(p==="/api/v1/license/public-key")return res.end(publicPem());
+    if(p==="/api/v1/license/revision")return json(res,200,{service:"OrbitFS License Master",version:"2.0.0",authority:"master",components:COMPONENTS});
     if(p==="/api/v1/license/validate"&&req.method==="POST")return validate(req,res);
     if(p==="/api/v1/license/issue"&&req.method==="POST")return issue(req,res);
     if(p==="/api/v1/licenses"&&req.method==="GET"){if(!allowed(req,["master","billing"]))return json(res,401,{error:"Unauthorized"});return json(res,200,{licenses:(await db.query("select * from license_bindings where archived_at is null order by created_at desc limit 500")).rows});}
@@ -112,5 +128,6 @@ export async function handler(req:IncomingMessage,res:ServerResponse){
 if(process.env.NODE_ENV!=="production"){
   const {createServer}=await import("node:http");createServer(handler).listen(Number(process.env.PORT||3000),()=>console.log("OrbitFS License Master listening"));
 }
+
 
 
