@@ -24,7 +24,8 @@ export default { async fetch(request: Request, env: Env) {
     else if (url.pathname.match(/^\/api\/v1\/releases\/[^/]+\/publish$/) && request.method === "POST") response = await publishRelease(request, env, url.pathname.split("/")[4]);
     else if (url.pathname === "/api/v1/deployments" && request.method === "POST") response = await deployment(request, env);
     else response = json({ error:"Not found" }, 404);
-    return new Response(response.body, { status:response.status, headers:{ ...Object.fromEntries(response.headers), ...cors(request) } });
+    return new Response(response.body, { status:response.status,
+      headers:{ "content-type": response.headers.get("content-type") || "application/json", ...cors(request) } });
   } catch (error) {
     return json({ error:"Master service error", detail:String((error as Error)?.message || error) }, 500, cors(request));
   }
