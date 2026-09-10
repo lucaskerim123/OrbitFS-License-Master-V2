@@ -3,6 +3,7 @@ import { issue } from "./license";
 import { validate } from "./runtime";
 import { releases, publishRelease } from "./release";
 import { deployment } from "./deploy";
+import { control } from "./control";
 
 function cors(request: Request) {
   const origin = request.headers.get("origin") || "*";
@@ -23,6 +24,7 @@ export default { async fetch(request: Request, env: Env) {
     else if (url.pathname === "/api/v1/releases" && request.method === "POST") response = await releases(request, env);
     else if (url.pathname.match(/^\/api\/v1\/releases\/[^/]+\/publish$/) && request.method === "POST") response = await publishRelease(request, env, url.pathname.split("/")[4]);
     else if (url.pathname === "/api/v1/deployments" && request.method === "POST") response = await deployment(request, env);
+    else if (url.pathname.match(/^\/api\/v1\/license\/[^/]+\/control$/) && request.method === "POST") response = await control(request, env, url.pathname.split("/")[4]);
     else response = json({ error:"Not found" }, 404);
     return new Response(response.body, { status:response.status,
       headers:{ "content-type": response.headers.get("content-type") || "application/json", ...cors(request) } });
