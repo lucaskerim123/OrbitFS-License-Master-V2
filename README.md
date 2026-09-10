@@ -1,28 +1,22 @@
 # OrbitFS License Master V2
 
-Independent authority for OrbitFS licensing, releases and deployment.
+Authoritative backend for OrbitFS licensing, release control and deployment/update jobs.
+
+## Responsibilities
+- Create and issue licences for paid Website orders.
+- Validate licences and installation bindings.
+- Suspend, terminate, activate/unblock and unlock licences.
+- Maintain authoritative release records and publish state.
+- Queue and track deployment/update jobs.
+- Sign runtime entitlements with the Master private signing key.
 
 ## Boundary
-- OrbitFS Website / UIDesign is the commercial control plane.
-- This repository is the authoritative licensing and release service.
-- The Website calls this service through server-to-server APIs.
-- Customer OrbitFS installations call the runtime validation API.
-- No Website billing data is stored here unless explicitly passed for licence fulfilment.
+The OrbitFS Website is the billing/customer platform and is not the licensing authority. It calls this service through server-side APIs. Customers do not directly operate the Master service.
 
-## Core domains
-1. Licence issuance and entitlement signing.
-2. Validation, activation, installation bindings and enforcement.
-3. Release metadata, manifests, channels and publish state.
-4. Deployment/update jobs and customer installation targets.
-5. Service health and audit history.
+The Website may continue accepting accounts, orders and payments while Master is unavailable. Paid orders remain awaiting licence issuance until Master is available.
 
-## Modes
-Website fulfilment supports Auto Mode and Manual Mode. Manual Mode is an operational fallback; it never makes the Website the licensing authority.
+## Components
+`orbitfs_base`, `orbitfs_mcp`, `orbitfs_apex`, `orbitfs_studio` are entitlement components. MCP/APEX/Studio are Engine components and do not create separate Engine deployments.
 
-## Release lifecycle
-Draft -> Validate -> Publish -> Admin controls -> Customer availability -> Customer deployment.
-
-Publishing never deploys automatically.
-
-## Security
-Secrets are Worker bindings only. Private signing keys never leave the Master service.
+## Runtime
+Cloudflare Worker + D1. Required secrets/bindings are defined in `wrangler.toml` and environment configuration.
