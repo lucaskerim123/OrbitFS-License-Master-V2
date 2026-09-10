@@ -1,0 +1,17 @@
+name = "orbitfs-license-master-v2"
+main = "src/index.ts"
+compatibility_date = "2026-09-10"
+
+[vars]
+ENTITLEMENT_ISSUER = "orbitfs-license-master"
+ENTITLEMENT_AUDIENCE = "orbitfs-runtime"
+ENTITLEMENT_TTL_SECONDS = "10800"
+ENTITLEMENT_GRACE_SECONDS = "604800"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "orbitfs_license_master_v2"
+database_id = "REPLACE_WITH_MASTER_D1_DATABASE_ID"
+
+[observability]
+enabled = true
