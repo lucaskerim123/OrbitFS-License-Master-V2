@@ -34,6 +34,16 @@
       <p id="login-error" class="error"></p>
     </form>
   </section>
+  <section id="setup-panel" class="hidden">
+    <h2>First-time setup</h2>
+    <p class="muted">Create the first Master administrator account. This form is disabled after setup is complete.</p>
+    <form id="setup-form">
+      <label for="setup-email">Administrator email</label><input id="setup-email" type="email" autocomplete="email" required>
+      <label for="setup-password">Password</label><input id="setup-password" type="password" autocomplete="new-password" minlength="12" required>
+      <button type="submit">Create administrator</button>
+      <p id="setup-error" class="error"></p>
+    </form>
+  </section>
   <section id="app-panel" class="hidden">
     <div class="toolbar"><div>Signed in as <strong id="user-email"></strong></div><div class="actions"><button id="refresh" class="secondary">Refresh</button><button id="sign-out" class="secondary">Sign out</button></div></div>
     <p id="message" class="muted"></p>
@@ -59,26 +69,30 @@
     return data;
   }
   async function api(path, options = {}) {
-    const response = await fetch(path, { ...options, headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json", ...(options.headers || {}) } });
+    const response = await fetch(path, { ...options, headers: { authorization: "Bearer " + accessToken, "content-type": "application/json", ...(options.headers || {}) } });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "Request failed");
     return data;
   }
   async function loadConfiguration() {
-    const [health, readiness] = await Promise.all([
-      fetch("/health").then((response) => response.json()),
-      fetch("/ready").then((response) => response.json()),
-    ]);
+    const [health, readiness] = await Promise.all([fetch("/health").then((response) => response.json()), fetch("/ready").then((response) => response.json())]);
     const checks = [
       ["API reachable", health.ok ? "yes" : "no"],
       ["Database", health.database ? "configured" : "not configured"],
       ["Entitlement signing", health.signingConfigured ? "configured" : "not configured"],
+      ["API credentials", health.apiCredentials && Object.values(health.apiCredentials).every(Boolean) ? "configured" : "incomplete"],
       ["Readiness", readiness.ok ? "ready" : (readiness.code || "not ready")],
     ];
     $("configuration").innerHTML = `<table>${checks.map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`).join("")}</table><p class="muted">Server secrets are configured in Vercel Environment Variables, never in this page.</p>`;
   }
-  function showApp(email) { $("login-panel").classList.add("hidden"); $("app-panel").classList.remove("hidden"); $("user-email").textContent = email; }
-  function showLogin() { $("app-panel").classList.add("hidden"); $("login-panel").classList.remove("hidden"); }
+  function showApp(email) { $("login-panel").classList.add("hidden"); $("setup-panel").classList.add("hidden"); $("app-panel").classList.remove("hidden"); $("user-email").textContent = email; }
+  function showLogin() { $("app-panel").classList.add("hidden"); $("setup-panel").classList.add("hidden"); $("login-panel").classList.remove("hidden"); }
+  function showSetup() { $("app-panel").classList.add("hidden"); $("login-panel").classList.add("hidden"); $("setup-panel").classList.remove("hidden"); }
+  async function checkSetup() {
+    const response = await fetch("/api/setup/status");
+    const status = await response.json();
+    if (status.setupRequired) showSetup();
+  }
   async function load() {
     await loadConfiguration();
     const [licenses, releases] = await Promise.all([api("/api/admin/licenses"), api("/api/admin/releases")]);
@@ -93,6 +107,17 @@
       const me = await api("/api/admin/me"); showApp(me.user.email); await load();
     } catch (error) { accessToken = ""; sessionStorage.removeItem("orbitfs_admin_access_token"); $("login-error").textContent = error.message; }
   });
+  $("setup-form").addEventListener("submit", async (event) => {
+    event.preventDefault(); $("setup-error").textContent = "";
+    try {
+      const response = await fetch("/api/setup/admin", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: $("setup-email").value, password: $("setup-password").value }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Administrator setup failed");
+      const session = await auth("/auth/v1/token?grant_type=password", { method: "POST", body: JSON.stringify({ email: $("setup-email").value, password: $("setup-password").value }) });
+      accessToken = session.access_token; sessionStorage.setItem("orbitfs_admin_access_token", accessToken);
+      const me = await api("/api/admin/me"); showApp(me.user.email); await load();
+    } catch (error) { $("setup-error").textContent = error.message; }
+  });
   $("licenses").addEventListener("click", async (event) => {
     const button = event.target.closest("button[data-id]"); if (!button) return;
     try { await api(`/api/admin/licenses/${encodeURIComponent(button.dataset.id)}/control`, { method: "POST", body: JSON.stringify({ action: button.dataset.action }) }); $("message").textContent = "License updated."; $("message").className = "success"; await load(); }
@@ -100,7 +125,8 @@
   });
   $("refresh").addEventListener("click", () => load().catch((error) => { $("message").textContent = error.message; $("message").className = "error"; }));
   $("sign-out").addEventListener("click", () => { accessToken = ""; sessionStorage.removeItem("orbitfs_admin_access_token"); showLogin(); });
-  if (accessToken) api("/api/admin/me").then((me) => { showApp(me.user.email); return load(); }).catch(() => { accessToken = ""; sessionStorage.removeItem("orbitfs_admin_access_token"); });
+  if (accessToken) api("/api/admin/me").then((me) => { showApp(me.user.email); return load(); }).catch(() => { accessToken = ""; sessionStorage.removeItem("orbitfs_admin_access_token"); checkSetup().catch(() => undefined); });
+  else checkSetup().catch((error) => { $("login-error").textContent = error.message; });
 </script>
 </body>
 </html>

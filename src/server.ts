@@ -162,6 +162,61 @@ const authUser = async (req: IncomingMessage): Promise<JsonObject | null> => {
   return (adminEmails.has(email) || appMetadata.role === "admin") ? user : null;
 };
 
+const supabaseAdminRequest = async (path: string, init: RequestInit = {}) => {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new HttpError(503, "Supabase admin authentication is not configured");
+  return fetch(`${SUPABASE_URL}${path}`, {
+    ...init,
+    headers: {
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      authorization: ["Bearer", SUPABASE_SERVICE_ROLE_KEY].join(" "),
+      "content-type": "application/json",
+      ...(init.headers || {}),
+    },
+  });
+};
+
+const configuredAdminUsers = async () => {
+  const response = await supabaseAdminRequest("/auth/v1/admin/users?per_page=1000");
+  if (!response.ok) throw new HttpError(502, "Unable to inspect Supabase administrator accounts");
+  const data = await response.json() as JsonObject;
+  const users = Array.isArray(data.users) ? data.users : [];
+  return users.filter((user) => {
+    if (!user || typeof user !== "object") return false;
+    const item = user as JsonObject;
+    const metadata = item.app_metadata && typeof item.app_metadata === "object" ? item.app_metadata as JsonObject : {};
+    return metadata.role === "admin" || adminEmails.has(String(item.email || "").toLowerCase());
+  });
+};
+
+const setupStatus = async () => {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    return { available: false, setupRequired: false, configured: false };
+  }
+  const admins = await configuredAdminUsers();
+  return { available: true, setupRequired: admins.length === 0, configured: admins.length > 0 };
+};
+
+const createInitialAdmin = async (req: IncomingMessage, res: ServerResponse) => {
+  const status = await setupStatus();
+  if (!status.available) return json(res, 503, { error: "Supabase admin authentication is not configured" });
+  if (!status.setupRequired) return json(res, 409, { error: "Administrator setup has already been completed" });
+  const input = await body(req);
+  const email = String(input.email || "").trim().toLowerCase();
+  const password = String(input.password || "");
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(res, 400, { error: "A valid email is required" });
+  if (password.length < 12) return json(res, 400, { error: "Password must be at least 12 characters" });
+  const response = await supabaseAdminRequest("/auth/v1/admin/users", {
+    method: "POST",
+    body: JSON.stringify({ email, password, email_confirm: true, app_metadata: { role: "admin" } }),
+  });
+  const data = await response.json().catch(() => ({})) as JsonObject;
+  if (!response.ok) {
+    const message = String(data.msg || data.message || data.error_description || "Administrator account creation failed");
+    return json(res, response.status === 422 ? 409 : 502, { error: message });
+  }
+  return json(res, 201, { ok: true, user: { id: data.id, email: data.email || email } });
+};
+
 const requireAdmin = async (req: IncomingMessage) => {
   const user = await authUser(req);
   if (!user) throw new HttpError(401, "Administrator authentication is required");
@@ -644,7 +699,11 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
       if (db) {
         try { database = (await query("select 1")).rowCount === 1; } catch { database = false; }
       }
-      return json(res, 200, { ok: true, service: "OrbitFS License Master", version: "2.0.0", database, signingConfigured: !!privatePem() });
+      return json(res, 200, {
+        ok: true, service: "OrbitFS License Master", version: "2.0.0", database, signingConfigured: !!privatePem(),
+        apiCredentials: { master: !!MASTER, billing: !!BILLING, deployer: !!DEPLOYER },
+        adminAuthConfigured: !!SUPABASE_URL && !!SUPABASE_ANON_KEY && !!SUPABASE_SERVICE_ROLE_KEY,
+      });
     }
     if (path === "/ready" || path === "/api/ready") {
       let database = false;
@@ -656,11 +715,13 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
         }
       }
       const signingConfigured = signingStatus();
-      return json(res, database && signingConfigured ? 200 : 503, {
-        ok: database && signingConfigured,
+      const credentialsConfigured = !!MASTER && !!BILLING && !!DEPLOYER;
+      const ready = database && signingConfigured && credentialsConfigured;
+      return json(res, ready ? 200 : 503, {
+        ok: ready,
         service: "OrbitFS License Master",
-        code: database ? signingConfigured ? undefined : "SIGNING_KEY_INVALID" : "DATABASE_UNAVAILABLE",
-        database,
+        code: !database ? "DATABASE_UNAVAILABLE" : !signingConfigured ? "SIGNING_KEY_INVALID" : !credentialsConfigured ? "API_CREDENTIALS_MISSING" : undefined,
+        database, apiCredentials: credentialsConfigured,
         signingConfigured,
       });
     }
@@ -683,6 +744,8 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
       const user = await requireAdmin(req);
       return json(res, 200, { user: { id: user.id, email: user.email } });
     }
+    if (path === "/api/setup/status" && req.method === "GET") return json(res, 200, await setupStatus());
+    if (path === "/api/setup/admin" && req.method === "POST") return createInitialAdmin(req, res);
     if (path === "/api/admin/licenses" && req.method === "GET") {
       await requireAdmin(req);
       return json(res, 200, { licenses: (await query<JsonObject>("select * from license_bindings where archived_at is null order by created_at desc limit 500")).rows.map(publicBinding) });

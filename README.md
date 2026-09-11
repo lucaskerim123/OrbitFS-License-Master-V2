@@ -85,9 +85,9 @@ create a second long-running check for the same change.
 ## First-time setup
 
 1. Create a Supabase project and run `migrations/0001_core.sql` through `0006_master_hardening.sql` in the Supabase SQL editor.
-2. In Supabase Authentication, create the administrator user with the email address listed in `ADMIN_EMAILS`. Enable email/password sign-in; no service-role key belongs in the browser.
+2. Enable Supabase email/password sign-in. When `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_ANON_KEY` are configured, open `/admin` and use **First-time setup** to create the first administrator; the account receives `app_metadata.role=admin` and is signed in automatically. Alternatively, create an administrator in Supabase Authentication with an email listed in `ADMIN_EMAILS`.
 3. In Vercel, add the variables from `.env.example` to the **Production** environment. Put the pooler `DATABASE_URL`, Supabase URL/keys, three server API tokens, `ADMIN_EMAILS`, and the base64 entitlement private key there. Redeploy after saving variables.
-4. Open `/health`, then `/ready`. Health should be HTTP 200; readiness becomes HTTP 200 only after the database and signing key are available.
+4. Open `/health`, then `/ready`. Health should be HTTP 200 and reports database, signing, API-token, and admin-auth configuration without exposing secrets. Readiness becomes HTTP 200 only after the database, signing key, and all three Master API tokens are available.
 5. Open `/admin`, sign in with the Supabase administrator account, and use the configuration status table before managing licenses.
 
 The admin panel can inspect service status and manage licenses, but it intentionally cannot edit API secrets. Configure those only in Vercel Environment Variables so database credentials, bearer tokens, and the entitlement private key never reach browser storage or page JavaScript. The public entitlement key is available at `/api/v1/license/public-key`.
