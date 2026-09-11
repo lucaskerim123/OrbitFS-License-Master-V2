@@ -92,6 +92,7 @@
     const response = await fetch("/api/setup/status");
     const status = await response.json();
     if (status.setupRequired) showSetup();
+    if (!status.available && !status.configured) $("login-error").textContent = "First-time setup is unavailable until Supabase URL, anon key, and service role key are configured.";
   }
   async function load() {
     await loadConfiguration();

@@ -681,9 +681,7 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     const url = new URL(req.url || "/", "http://localhost");
     const path = url.pathname;
     if (path === "/") {
-      res.statusCode = 302;
-      res.setHeader("location", "/admin");
-      return res.end();
+      return text(res, 200, adminPage(), "text/html; charset=utf-8");
     }
     if (path === "/favicon.ico") {
       res.statusCode = 204;
