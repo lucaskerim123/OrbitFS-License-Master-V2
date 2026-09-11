@@ -189,11 +189,26 @@ const configuredAdminUsers = async () => {
 };
 
 const setupStatus = async () => {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    return { available: false, setupRequired: false, configured: false };
+  const missing = [
+    !SUPABASE_URL ? "SUPABASE_URL" : "",
+    !SUPABASE_ANON_KEY ? "SUPABASE_ANON_KEY" : "",
+    !SUPABASE_SERVICE_ROLE_KEY ? "SUPABASE_SERVICE_ROLE_KEY" : "",
+  ].filter(Boolean);
+  if (missing.length) {
+    return { available: false, setupRequired: false, configured: false, missing };
   }
-  const admins = await configuredAdminUsers();
-  return { available: true, setupRequired: admins.length === 0, configured: admins.length > 0 };
+  try {
+    const admins = await configuredAdminUsers();
+    return { available: true, setupRequired: admins.length === 0, configured: admins.length > 0, missing: [] };
+  } catch (error) {
+    return {
+      available: false,
+      setupRequired: false,
+      configured: false,
+      missing: [],
+      error: error instanceof HttpError ? error.message : "Supabase admin authentication rejected the configured service role key",
+    };
+  }
 };
 
 const createInitialAdmin = async (req: IncomingMessage, res: ServerResponse) => {

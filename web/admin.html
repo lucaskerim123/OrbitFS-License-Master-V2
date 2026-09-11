@@ -92,7 +92,11 @@
     const response = await fetch("/api/setup/status");
     const status = await response.json();
     if (status.setupRequired) showSetup();
-    if (!status.available && !status.configured) $("login-error").textContent = "First-time setup is unavailable until Supabase URL, anon key, and service role key are configured.";
+    if (!status.available && !status.configured) {
+      $("login-error").textContent = status.missing && status.missing.length
+        ? "Missing Production environment variables: " + status.missing.join(", ") + ". Redeploy after saving them."
+        : (status.error || "Supabase admin authentication is unavailable. Check the Production service role key and redeploy.");
+    }
   }
   async function load() {
     await loadConfiguration();
