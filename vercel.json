@@ -6,7 +6,7 @@
   "functions": {
     "api/[...path].ts": {
       "maxDuration": 10,
-      "includeFiles": ["web/admin.html"]
+      "includeFiles": "web/admin.html"
     }
   },
   "rewrites": [
