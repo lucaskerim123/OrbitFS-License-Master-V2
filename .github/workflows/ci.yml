@@ -3,8 +3,34 @@ name: License Master CI
 on:
   push:
     branches: [main]
+    paths:
+      - "api/**"
+      - "src/**"
+      - "web/**"
+      - "migrations/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - "vercel.json"
+      - ".github/workflows/ci.yml"
   pull_request:
     branches: [main]
+    paths:
+      - "api/**"
+      - "src/**"
+      - "web/**"
+      - "migrations/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - "vercel.json"
+      - ".github/workflows/ci.yml"
+
+concurrency:
+  group: license-master-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:
@@ -17,4 +43,4 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
-      - run: npx wrangler deploy --dry-run
+      - run: npm run build

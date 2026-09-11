@@ -20,6 +20,8 @@ Customers can still create accounts, orders and payments while Master is unavail
 - `POST /api/v1/license/:id/control` — activate, suspend, terminate, unlock, component and expiry controls.
 - `GET /api/v1/license/public-key` — runtime verification key.
 - `GET /api/v1/license/revision` — Master authority revision.
+- `GET /health` — liveness and dependency diagnostics.
+- `GET /ready` — readiness check (database and entitlement signing key).
 - `GET /admin` — small administrator console (Supabase Auth email/password).
 
 ## Release API
@@ -59,3 +61,23 @@ and publishable key, and the API verifies the Supabase access token server-side
 before every administrator operation. Apply `migrations/0001_core.sql` to a fresh
 Supabase PostgreSQL database; migration files `0002`–`0006` are compatibility
 no-ops because the former files used invalid SQLite syntax and incomplete tables.
+
+For Vercel Hobby, keep request work bounded: the included configuration uses the
+10-second function limit. Artifact uploads should be performed by the release
+pipeline, and deployment execution should be treated as a short-lived submission
+operation rather than a background worker.
+
+## Low-noise deployment workflow
+
+Link the Vercel project to this repository with `main` as its production branch.
+For a free-tier operation, disable automatic preview deployments for incidental
+branches in the Vercel Git settings and use pull requests for review builds.
+Production should be promoted only after the pull request is merged to `main`.
+
+The repository's Vercel `ignoreCommand` skips builds for README-only, issue/
+workflow-only, and other metadata-only commits while failing open when Git
+metadata is unavailable. Batch related licensing, migration, and deployment
+changes into one pull request before pushing; this reduces duplicate preview
+builds while keeping source and schema changes deployable. GitHub Actions uses
+the same path filter and cancels superseded runs, so a branch push does not
+create a second long-running check for the same change.
