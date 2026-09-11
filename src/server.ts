@@ -185,7 +185,10 @@ async function issue(req: IncomingMessage, res: ServerResponse) {
       licenseKey = (await client.query("select license_key from license_key_delivery where binding_id=$1 order by created_at desc limit 1", [existing.id])).rows[0]?.license_key;
     } else {
       const components = input.components && typeof input.components === "object" && !Array.isArray(input.components) ? input.components : {};
-      const maxInstallations = Math.max(1, Math.min(100, Number(input.maxInstallations || 1)));
+      const requestedMaxInstallations = Number(input.maxInstallations ?? 1);
+      const maxInstallations = Number.isFinite(requestedMaxInstallations)
+        ? Math.max(1, Math.min(100, Math.floor(requestedMaxInstallations)))
+        : 1;
       licenseKey = newLicenseKey();
       binding = (await client.query(
         `insert into license_bindings
@@ -263,6 +266,8 @@ async function validate(req: IncomingMessage, res: ServerResponse) {
         [binding.id, component, installationId],
       )).rows[0] as JsonObject | undefined;
       if (state === "active" && enabled && input.activate === true && !installation) {
+        // Serialize activation per license so concurrent requests cannot exceed the limit.
+        if (client) await client.query("select pg_advisory_xact_lock(hashtext($1))", [String(binding.id)]);
         const count = Number((await (client || db!).query(
           "select count(distinct installation_id)::int as count from license_installations where binding_id=$1 and status='active'",
           [binding.id],
@@ -303,15 +308,15 @@ async function validate(req: IncomingMessage, res: ServerResponse) {
     client?.release();
   }
 
-  await query(
-    "insert into license_validation_log(binding_id,license_id,installation_id,result,reason) values($1,$2,$3,$4,$5)",
-    [binding.id, binding.id, installationId, state === "active" ? "allowed" : "denied", state === "active" ? null : state],
-  );
   const settings = (await query<JsonObject>("select * from master_license_settings where id='primary'")).rows[0] || {};
   const iat = Math.floor(Date.now() / 1000);
   const ttl = Number(settings.entitlement_ttl_seconds || 10800);
   const grace = Number(settings.grace_seconds || 604800);
   const valid = state === "active" && Object.values(result).some((value) => (value as JsonObject).allowed === true);
+  await query(
+    "insert into license_validation_log(binding_id,license_id,installation_id,result,reason) values($1,$2,$3,$4,$5)",
+    [binding.id, binding.id, installationId, valid ? "allowed" : "denied", valid ? null : state === "active" ? "activation_required" : state],
+  );
   return json(res, 200, {
     valid,
     reason: valid ? null : state === "active" ? "activation_required" : state,
@@ -592,6 +597,8 @@ const adminPage = () => {
 };
 
 export async function handler(req: IncomingMessage, res: ServerResponse) {
+  const requestId = String(req.headers["x-request-id"] || randomUUID()).slice(0, 128);
+  res.setHeader("x-request-id", requestId);
   const origin = String(req.headers.origin || "");
   const protocol = String(req.headers["x-forwarded-proto"] || (process.env.NODE_ENV === "production" ? "https" : "http")).split(",")[0].trim();
   const sameOrigin = !!origin && !!req.headers.host && origin === `${protocol}://${req.headers.host}`;
@@ -611,14 +618,27 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     const url = new URL(req.url || "/", "http://localhost");
     const path = url.pathname;
     if (path === "/admin" || path === "/admin/" || path === "/api/admin-ui") return text(res, 200, adminPage(), "text/html; charset=utf-8");
-    if (path === "/health") {
+    if (path === "/health" || path === "/api/health") {
       let database = false;
       if (db) {
         try { database = (await query("select 1")).rowCount === 1; } catch { database = false; }
       }
       return json(res, 200, { ok: true, service: "OrbitFS License Master", version: "2.0.0", database, signingConfigured: !!privatePem() });
     }
-    if (path === "/api/v1/license/public-key") return text(res, 200, publicPem());
+    if (path === "/ready" || path === "/api/ready") {
+      const database = !!db && (await query("select 1")).rowCount === 1;
+      const signingConfigured = !!privatePem();
+      return json(res, database && signingConfigured ? 200 : 503, {
+        ok: database && signingConfigured,
+        service: "OrbitFS License Master",
+        database,
+        signingConfigured,
+      });
+    }
+    if (path === "/api/v1/license/public-key") {
+      const key = publicPem();
+      return key ? text(res, 200, key) : json(res, 503, { error: "Entitlement signing is not configured" });
+    }
     if (path === "/api/v1/license/revision") return json(res, 200, { service: "OrbitFS License Master", version: "2.0.0", authority: "master", components: COMPONENTS });
     if (path === "/api/v1/license/validate" && req.method === "POST") return validate(req, res);
     if (path === "/api/v1/license/issue" && req.method === "POST") return issue(req, res);
@@ -657,8 +677,18 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     return json(res, 404, { error: "Not found" });
   } catch (error) {
     const status = error instanceof HttpError ? error.status : 500;
-    if (!(error instanceof HttpError)) console.error(error);
-    return json(res, status, { error: error instanceof Error ? error.message : "Master service error" });
+    if (!(error instanceof HttpError)) {
+      console.error(JSON.stringify({
+        requestId,
+        method: req.method,
+        url: req.url,
+        error: error instanceof Error ? error.stack || error.message : String(error),
+      }));
+    }
+    return json(res, status, {
+      error: status >= 500 ? "Master service error" : error instanceof Error ? error.message : "Request failed",
+      requestId,
+    });
   }
 }
 
