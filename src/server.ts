@@ -618,6 +618,19 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
   try {
     const url = new URL(req.url || "/", "http://localhost");
     const path = url.pathname;
+    if (path === "/") {
+      return json(res, 200, {
+        service: "OrbitFS License Master",
+        version: "2.0.0",
+        health: "/health",
+        readiness: "/ready",
+        api: "/api/v1",
+      });
+    }
+    if (path === "/favicon.ico") {
+      res.statusCode = 204;
+      return res.end();
+    }
     if (path === "/admin" || path === "/admin/" || path === "/api/admin-ui") return text(res, 200, adminPage(), "text/html; charset=utf-8");
     if (path === "/health" || path === "/api/health") {
       let database = false;
