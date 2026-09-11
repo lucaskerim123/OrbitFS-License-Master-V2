@@ -20,6 +20,7 @@ Customers can still create accounts, orders and payments while Master is unavail
 - `POST /api/v1/license/:id/control` — activate, suspend, terminate, unlock, component and expiry controls.
 - `GET /api/v1/license/public-key` — runtime verification key.
 - `GET /api/v1/license/revision` — Master authority revision.
+- `GET /admin` — small administrator console (Supabase Auth email/password).
 
 ## Release API
 Lifecycle is `draft -> validated -> published`, with pause and withdrawal controls.
@@ -49,3 +50,12 @@ Publishing never deploys automatically.
 - `BILLING_API_TOKEN`
 - `DEPLOYER_API_TOKEN`
 - `LICENSE_ENTITLEMENT_PRIVATE_KEY_B64`
+- `SUPABASE_ANON_KEY` (publishable key used only by the sign-in page)
+- `ADMIN_EMAILS` (comma-separated allowlist; alternatively set `app_metadata.role=admin`)
+
+`SUPABASE_SERVICE_ROLE_KEY`, all Master/Billing/Deployer tokens, and the entitlement
+private key are server-only values. The admin page receives only the Supabase URL
+and publishable key, and the API verifies the Supabase access token server-side
+before every administrator operation. Apply `migrations/0001_core.sql` to a fresh
+Supabase PostgreSQL database; migration files `0002`–`0006` are compatibility
+no-ops because the former files used invalid SQLite syntax and incomplete tables.

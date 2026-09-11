@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>OrbitFS License Master</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; background: #101318; color: #edf2f7; }
+    main { max-width: 1050px; margin: 0 auto; padding: 2rem 1rem 4rem; }
+    h1 { margin-top: 0; } .muted { color: #9aa5b1; }
+    form, section { background: #191f27; border: 1px solid #303946; border-radius: 10px; padding: 1rem; margin: 1rem 0; }
+    label { display: block; margin: .7rem 0 .25rem; color: #c6d0db; }
+    input, button, select { font: inherit; border-radius: 6px; padding: .55rem .7rem; border: 1px solid #485363; }
+    input, select { width: 100%; box-sizing: border-box; background: #0f141a; color: #fff; }
+    button { cursor: pointer; background: #3d82f6; color: white; border-color: #3d82f6; margin-top: .8rem; }
+    button.secondary { background: transparent; border-color: #687588; } button.danger { background: #c43c4b; border-color: #c43c4b; }
+    table { width: 100%; border-collapse: collapse; margin-top: .7rem; } th, td { text-align: left; padding: .6rem; border-bottom: 1px solid #303946; vertical-align: top; }
+    code { word-break: break-all; } .hidden { display: none; } .error { color: #ff9ea7; } .success { color: #8ce0a5; }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+    .actions { display: flex; gap: .4rem; flex-wrap: wrap; } .actions button { margin: 0; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>OrbitFS License Master</h1>
+  <p class="muted">Administrator console. Customer credentials and Master service tokens are never used in this browser.</p>
+  <section id="login-panel">
+    <h2>Administrator sign in</h2>
+    <form id="login-form">
+      <label for="email">Email</label><input id="email" type="email" autocomplete="username" required>
+      <label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required>
+      <button type="submit">Sign in</button>
+      <p id="login-error" class="error"></p>
+    </form>
+  </section>
+  <section id="app-panel" class="hidden">
+    <div class="toolbar"><div>Signed in as <strong id="user-email"></strong></div><div class="actions"><button id="refresh" class="secondary">Refresh</button><button id="sign-out" class="secondary">Sign out</button></div></div>
+    <p id="message" class="muted"></p>
+    <h2>Licenses</h2>
+    <div style="overflow:auto"><table><thead><tr><th>Customer</th><th>Order</th><th>Status</th><th>Expires</th><th>Controls</th></tr></thead><tbody id="licenses"></tbody></table></div>
+    <h2>Releases</h2>
+    <div style="overflow:auto"><table><thead><tr><th>Component</th><th>Version</th><th>Channel</th><th>Status</th></tr></thead><tbody id="releases"></tbody></table></div>
+  </section>
+</main>
+<script>
+  const SUPABASE_URL = __SUPABASE_URL__;
+  const SUPABASE_ANON_KEY = __SUPABASE_ANON_KEY__;
+  let accessToken = sessionStorage.getItem("orbitfs_admin_access_token") || "";
+  const $ = (id) => document.getElementById(id);
+  const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  async function auth(path, options = {}) {
+    const response = await fetch(`${SUPABASE_URL}${path}`, { ...options, headers: { apikey: SUPABASE_ANON_KEY, "content-type": "application/json", ...(options.headers || {}) } });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error_description || data.msg || data.message || "Authentication failed");
+    return data;
+  }
+  async function api(path, options = {}) {
+    const response = await fetch(path, { ...options, headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json", ...(options.headers || {}) } });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "Request failed");
+    return data;
+  }
+  function showApp(email) { $("login-panel").classList.add("hidden"); $("app-panel").classList.remove("hidden"); $("user-email").textContent = email; }
+  function showLogin() { $("app-panel").classList.add("hidden"); $("login-panel").classList.remove("hidden"); }
+  async function load() {
+    const [licenses, releases] = await Promise.all([api("/api/admin/licenses"), api("/api/admin/releases")]);
+    $("licenses").innerHTML = licenses.licenses.map((license) => `<tr><td>${escapeHtml(license.customer_ref)}</td><td>${escapeHtml(license.order_ref)}</td><td>${escapeHtml(license.status)}</td><td>${escapeHtml(license.expires_at || "Never")}</td><td><div class="actions"><button data-id="${escapeHtml(license.id)}" data-action="suspend">Suspend</button><button data-id="${escapeHtml(license.id)}" data-action="activate">Activate</button><button class="danger" data-id="${escapeHtml(license.id)}" data-action="terminate">Terminate</button></div></td></tr>`).join("");
+    $("releases").innerHTML = releases.releases.map((release) => `<tr><td>${escapeHtml(release.component)}</td><td>${escapeHtml(release.version)}</td><td>${escapeHtml(release.channel)}</td><td>${escapeHtml(release.status)}</td></tr>`).join("");
+  }
+  $("login-form").addEventListener("submit", async (event) => {
+    event.preventDefault(); $("login-error").textContent = "";
+    try {
+      const data = await auth("/auth/v1/token?grant_type=password", { method: "POST", body: JSON.stringify({ email: $("email").value, password: $("password").value }) });
+      accessToken = data.access_token; sessionStorage.setItem("orbitfs_admin_access_token", accessToken);
+      const me = await api("/api/admin/me"); showApp(me.user.email); await load();
+    } catch (error) { accessToken = ""; sessionStorage.removeItem("orbitfs_admin_access_token"); $("login-error").textContent = error.message; }
+  });
+  $("licenses").addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-id]"); if (!button) return;
+    try { await api(`/api/admin/licenses/${encodeURIComponent(button.dataset.id)}/control`, { method: "POST", body: JSON.stringify({ action: button.dataset.action }) }); $("message").textContent = "License updated."; await load(); }
+    catch (error) { $("message").textContent = error.message; $("message").className = "error"; }
+  });
+  $("refresh").addEventListener("click", () => load().catch((error) => { $("message").textContent = error.message; }));
+  $("sign-out").addEventListener("click", () => { accessToken = ""; sessionStorage.removeItem("orbitfs_admin_access_token"); showLogin(); });
+  if (accessToken) api("/api/admin/me").then((me) => { showApp(me.user.email); return load(); }).catch(() => { accessToken = ""; sessionStorage.removeItem("orbitfs_admin_access_token"); });
+</script>
+</body>
+</html>
