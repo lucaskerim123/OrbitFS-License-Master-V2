@@ -20,6 +20,52 @@
     .release { display:flex; justify-content:space-between; gap:14px; align-items:center; border-bottom:1px solid #173440; padding:13px 0 } .release:last-child { border-bottom:0 } .release-icon { width:34px; height:34px; border-radius:8px; background:#4245db; display:grid; place-items:center } .release-main { flex:1 } .release-main b { display:block } .release-main small { color:var(--muted) } .health { color:var(--green); font-size:12px; margin-top:3px }
     #setup-panel,#login-panel { max-width:500px; margin:10vh auto } #setup-panel .card,#login-panel .card { padding:28px } .error { color:#ff9ea7; min-height:20px } .success { color:var(--green) }
     @media(max-width:950px){ .sidebar{width:76px;padding:18px 8px}.brand div:not(.brand-mark),.nav-title,nav button span,.online,.user div{display:none}.brand{padding:0;justify-content:center}nav button{justify-content:center}.grid.stats{grid-template-columns:repeat(2,1fr)}.grid.two{grid-template-columns:1fr}.main{padding:20px 14px} } @media(max-width:560px){.field-grid{grid-template-columns:1fr}.topbar{align-items:flex-start;flex-direction:column}.grid.stats{grid-template-columns:1fr 1fr}.card{padding:15px}}
+    /* Premium responsive layout pass: keep the workspace anchored to the viewport top and give mobile the full canvas. */
+    html { background:var(--bg); }
+    body { overflow-x:hidden; }
+    .shell { align-items:flex-start; }
+    .sidebar { position:sticky; top:0; height:100vh; overflow-y:auto; }
+    .main { width:min(100%, 1480px); margin:0 auto; padding:32px 32px 64px; }
+    .topbar { margin-bottom:28px; }
+    .topbar > div:first-child { min-width:0; }
+    .topbar .button { flex-shrink:0; }
+    .grid.two { grid-template-columns:minmax(0,1.6fr) minmax(320px,.85fr); }
+    .card { border-radius:14px; }
+    .view { animation:view-in .18s ease-out both; }
+    @keyframes view-in { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:none; } }
+    @media (prefers-reduced-motion:reduce) { .view { animation:none; } }
+    @media (max-width:950px) {
+      .main { width:auto; padding:24px 20px 56px; margin:0; }
+      .grid.two { grid-template-columns:1fr; }
+    }
+    @media (max-width:700px) {
+      .shell { flex-direction:column; min-height:100vh; }
+      .sidebar { position:sticky; top:0; z-index:20; width:100%; height:auto; min-height:62px; padding:10px 12px; border-right:0; border-bottom:1px solid #173846; flex-direction:row; align-items:center; gap:12px; overflow-x:auto; overflow-y:hidden; backdrop-filter:blur(16px); }
+      .brand { flex:0 0 auto; padding:0; }
+      .brand-mark { width:38px; height:38px; font-size:16px; }
+      .brand div:not(.brand-mark) { display:block; }
+      .brand strong { font-size:13px; } .brand span { font-size:10px; }
+      .sidebar > div:nth-child(2), .sidebar > div:nth-child(3) { flex:0 0 auto; }
+      .nav-title { display:none; }
+      nav { display:flex; gap:4px; }
+      nav button { flex:0 0 auto; padding:9px 10px; gap:7px; white-space:nowrap; }
+      nav button span { display:inline !important; }
+      .nav-icon { width:auto; } .side-bottom { display:none; }
+      .main { width:100%; padding:22px 14px 44px; }
+      .topbar { align-items:flex-start; margin-bottom:18px; gap:12px; }
+      .topbar .button { width:100%; }
+      h1 { font-size:27px; }
+      .grid.stats { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .card { padding:16px; border-radius:12px; }
+      .panel-head { align-items:flex-start; } .field-grid { grid-template-columns:1fr; gap:12px; }
+      .choices { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); } .choice { width:100%; }
+      .actions { align-items:stretch; } .actions .button { width:100%; } .actions .muted { width:100%; } table { min-width:620px; }
+    }
+    @media (max-width:420px) {
+      .brand div:not(.brand-mark) { display:none; } .brand-mark { width:36px; height:36px; }
+      nav button { padding:9px 8px; } nav button span:not(.nav-icon) { display:none !important; }
+      .main { padding-left:12px; padding-right:12px; } .grid.stats { gap:10px; } .stat-value { font-size:23px; }
+    }
   </style>
 </head>
 <body>
