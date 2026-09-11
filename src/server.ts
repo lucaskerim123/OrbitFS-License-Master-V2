@@ -681,13 +681,9 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     const url = new URL(req.url || "/", "http://localhost");
     const path = url.pathname;
     if (path === "/") {
-      return json(res, 200, {
-        service: "OrbitFS License Master",
-        version: "2.0.0",
-        health: "/health",
-        readiness: "/ready",
-        api: "/api/v1",
-      });
+      res.statusCode = 302;
+      res.setHeader("location", "/admin");
+      return res.end();
     }
     if (path === "/favicon.ico") {
       res.statusCode = 204;
