@@ -597,6 +597,8 @@ const adminPage = () => {
 };
 
 export async function handler(req: IncomingMessage, res: ServerResponse) {
+  const requestId = String(req.headers["x-request-id"] || randomUUID()).slice(0, 128);
+  res.setHeader("x-request-id", requestId);
   const origin = String(req.headers.origin || "");
   const protocol = String(req.headers["x-forwarded-proto"] || (process.env.NODE_ENV === "production" ? "https" : "http")).split(",")[0].trim();
   const sameOrigin = !!origin && !!req.headers.host && origin === `${protocol}://${req.headers.host}`;
@@ -616,14 +618,14 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     const url = new URL(req.url || "/", "http://localhost");
     const path = url.pathname;
     if (path === "/admin" || path === "/admin/" || path === "/api/admin-ui") return text(res, 200, adminPage(), "text/html; charset=utf-8");
-    if (path === "/health") {
+    if (path === "/health" || path === "/api/health") {
       let database = false;
       if (db) {
         try { database = (await query("select 1")).rowCount === 1; } catch { database = false; }
       }
       return json(res, 200, { ok: true, service: "OrbitFS License Master", version: "2.0.0", database, signingConfigured: !!privatePem() });
     }
-    if (path === "/ready") {
+    if (path === "/ready" || path === "/api/ready") {
       const database = !!db && (await query("select 1")).rowCount === 1;
       const signingConfigured = !!privatePem();
       return json(res, database && signingConfigured ? 200 : 503, {
@@ -675,8 +677,18 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     return json(res, 404, { error: "Not found" });
   } catch (error) {
     const status = error instanceof HttpError ? error.status : 500;
-    if (!(error instanceof HttpError)) console.error(error);
-    return json(res, status, { error: error instanceof Error ? error.message : "Master service error" });
+    if (!(error instanceof HttpError)) {
+      console.error(JSON.stringify({
+        requestId,
+        method: req.method,
+        url: req.url,
+        error: error instanceof Error ? error.stack || error.message : String(error),
+      }));
+    }
+    return json(res, status, {
+      error: status >= 500 ? "Master service error" : error instanceof Error ? error.message : "Request failed",
+      requestId,
+    });
   }
 }
 
