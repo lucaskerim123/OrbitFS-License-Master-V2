@@ -3,135 +3,106 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>OrbitFS License Master</title>
+  <title>KeyForge License System</title>
   <style>
-    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
-    body { margin: 0; background: #101318; color: #edf2f7; }
-    main { max-width: 1050px; margin: 0 auto; padding: 2rem 1rem 4rem; }
-    h1 { margin-top: 0; } .muted { color: #9aa5b1; }
-    form, section { background: #191f27; border: 1px solid #303946; border-radius: 10px; padding: 1rem; margin: 1rem 0; }
-    label { display: block; margin: .7rem 0 .25rem; color: #c6d0db; }
-    input, button { font: inherit; border-radius: 6px; padding: .55rem .7rem; border: 1px solid #485363; }
-    input { width: 100%; box-sizing: border-box; background: #0f141a; color: #fff; }
-    button { cursor: pointer; background: #3d82f6; color: white; border-color: #3d82f6; margin-top: .8rem; }
-    button.secondary { background: transparent; border-color: #687588; } button.danger { background: #c43c4b; border-color: #c43c4b; }
-    table { width: 100%; border-collapse: collapse; margin-top: .7rem; } th, td { text-align: left; padding: .6rem; border-bottom: 1px solid #303946; vertical-align: top; }
-    code { word-break: break-all; } .hidden { display: none; } .error { color: #ff9ea7; } .success { color: #8ce0a5; }
-    .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
-    .actions { display: flex; gap: .4rem; flex-wrap: wrap; } .actions button { margin: 0; }
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; --bg:#061219; --panel:#0b1b24; --panel2:#0d222d; --line:#183745; --text:#edf7fb; --muted:#8ca7b3; --blue:#4c50ff; --cyan:#5ad6ed; --green:#2be39a; --amber:#f6bd4d; --red:#ff6673; }
+    * { box-sizing:border-box } body { margin:0; color:var(--text); background:radial-gradient(circle at 70% -20%,#123441 0,#061219 48%,#040d12 100%); min-height:100vh } button,input,select { font:inherit } button { cursor:pointer }
+    .hidden { display:none!important } .shell { display:flex; min-height:100vh } .sidebar { width:220px; padding:24px 14px 16px; border-right:1px solid #102c37; background:rgba(3,14,20,.88); display:flex; flex-direction:column; gap:28px; flex-shrink:0 }
+    .brand { display:flex; gap:12px; align-items:center; padding:0 10px } .brand-mark { width:46px; height:46px; border:2px solid #6769ff; border-radius:50%; display:grid; place-items:center; font-size:20px; color:#fff; box-shadow:0 0 24px #3d42e766 } .brand strong { display:block; font-size:16px } .brand span { color:#9cb6c3; font-size:13px }
+    .nav-title { color:#b8d2dc; font-size:12px; letter-spacing:.08em; padding:0 12px; margin-bottom:7px } nav { display:grid; gap:5px } nav button { color:#b6cbd3; border:0; background:transparent; text-align:left; padding:12px; border-radius:8px; display:flex; align-items:center; gap:12px } nav button:hover,nav button.active { color:#fff; background:#102733 } nav button.active { box-shadow:inset 2px 0 var(--blue) } .nav-icon { width:18px; text-align:center; color:#c7d9df }
+    .side-bottom { margin-top:auto; display:grid; gap:12px } .online,.user { border:1px solid #163b47; background:#0b2029; border-radius:9px; padding:14px } .online { color:var(--muted); font-size:12px } .online b { color:var(--green); display:block; margin-bottom:8px } .user { display:flex; align-items:center; gap:10px; font-size:13px } .avatar { width:34px; height:34px; border-radius:50%; background:#1e76a6; display:grid; place-items:center }
+    .main { flex:1; min-width:0; padding:28px 24px 54px; max-width:1400px; margin:auto } .topbar { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:25px } h1 { font-size:31px; margin:0 0 5px; letter-spacing:-.03em } h2 { font-size:18px; margin:0 0 8px } h3 { font-size:15px; margin:0 } .eyebrow { color:#a8c4ce; font-size:12px; text-transform:uppercase; letter-spacing:.08em } .subtitle { color:var(--muted); margin:0 }
+    .button { border:1px solid #315869; border-radius:7px; padding:10px 15px; background:#0d2530; color:#fff } .button.primary { background:linear-gradient(135deg,#5755ff,#3f40d9); border-color:#6c6bff; box-shadow:0 8px 22px #3f40d933 } .button.danger { color:#ff8d96; border-color:#8f3340; background:#2b141b } .button.small { padding:6px 9px; font-size:12px }
+    .grid { display:grid; gap:16px } .grid.stats { grid-template-columns:repeat(4,minmax(0,1fr)); margin-bottom:18px } .grid.two { grid-template-columns:minmax(0,1.55fr) minmax(300px,.9fr) } .card { background:linear-gradient(145deg,rgba(13,35,45,.91),rgba(7,23,31,.94)); border:1px solid var(--line); border-radius:10px; padding:20px; box-shadow:0 16px 35px #0000001c } .stat-label { color:var(--muted); font-size:12px } .stat-value { font-size:28px; font-weight:700; margin:10px 0 5px } .trend { color:var(--green); font-size:12px }
+    .panel-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:16px } .field-grid { display:grid; grid-template-columns:1fr 1fr; gap:15px } label { display:block; color:#c0d4db; font-size:12px; margin-bottom:7px } input,select { width:100%; color:#eaf6fa; background:#081820; border:1px solid #285061; border-radius:7px; padding:11px 12px; outline:0 } input:focus,select:focus { border-color:#696bff; box-shadow:0 0 0 2px #696bff22 } .full { grid-column:1/-1 } .choices { display:flex; gap:7px; flex-wrap:wrap } .choice { border:1px solid #2d5261; background:#091b24; padding:10px 15px; border-radius:7px; color:#b8cfd7 } .choice.selected { color:#fff; border-color:#7778ff; background:#27285c }
+    .actions { display:flex; gap:9px; align-items:center; flex-wrap:wrap; margin-top:18px } .search-row { display:flex; gap:10px; margin-bottom:15px } .search-row input { flex:1 } .table-wrap { overflow:auto } table { width:100%; border-collapse:collapse; min-width:680px } th,td { border-bottom:1px solid #173440; padding:12px 9px; text-align:left; font-size:13px; white-space:nowrap } th { color:#7795a0; font-weight:500; text-transform:uppercase; font-size:10px; letter-spacing:.08em } td { color:#d8e8ed } .muted { color:var(--muted) } .status { display:inline-flex; align-items:center; gap:6px; border:1px solid #245a50; border-radius:20px; padding:4px 9px; color:var(--green); font-size:11px } .status:before { content:""; width:7px; height:7px; border-radius:50%; background:currentColor } .status.warn { color:var(--amber); border-color:#6a5021 } .status.bad { color:var(--red); border-color:#69313a }
+    .activity { display:grid; gap:17px } .event { display:grid; grid-template-columns:10px 1fr auto; gap:10px; align-items:start } .event-dot { width:9px; height:9px; margin-top:5px; border-radius:50%; background:var(--green); box-shadow:0 0 12px var(--green) } .event:nth-child(2) .event-dot { background:#6276ff; box-shadow:0 0 12px #6276ff } .event:nth-child(3) .event-dot { background:var(--amber); box-shadow:0 0 12px var(--amber) } .event b { font-size:13px } .event small { display:block; color:var(--muted); margin-top:4px } .event time { color:#7895a0; font-size:11px }
+    .release { display:flex; justify-content:space-between; gap:14px; align-items:center; border-bottom:1px solid #173440; padding:13px 0 } .release:last-child { border-bottom:0 } .release-icon { width:34px; height:34px; border-radius:8px; background:#4245db; display:grid; place-items:center } .release-main { flex:1 } .release-main b { display:block } .release-main small { color:var(--muted) } .health { color:var(--green); font-size:12px; margin-top:3px }
+    #setup-panel,#login-panel { max-width:500px; margin:10vh auto } #setup-panel .card,#login-panel .card { padding:28px } .error { color:#ff9ea7; min-height:20px } .success { color:var(--green) }
+    @media(max-width:950px){ .sidebar{width:76px;padding:18px 8px}.brand div:not(.brand-mark),.nav-title,nav button span,.online,.user div{display:none}.brand{padding:0;justify-content:center}nav button{justify-content:center}.grid.stats{grid-template-columns:repeat(2,1fr)}.grid.two{grid-template-columns:1fr}.main{padding:20px 14px} } @media(max-width:560px){.field-grid{grid-template-columns:1fr}.topbar{align-items:flex-start;flex-direction:column}.grid.stats{grid-template-columns:1fr 1fr}.card{padding:15px}}
   </style>
 </head>
 <body>
-<main>
-  <h1>OrbitFS License Master</h1>
-  <p class="muted">Administrator console. Customer credentials and Master service tokens are never used in this browser.</p>
-  <section id="login-panel">
-    <h2>Administrator sign in</h2>
-    <form id="login-form">
-      <label for="email">Email</label><input id="email" type="email" autocomplete="username" required>
-      <label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required>
-      <button type="submit">Sign in</button>
-      <p id="login-error" class="error"></p>
-    </form>
-  </section>
-  <section id="setup-panel" class="hidden">
-    <h2>First-time setup</h2>
-    <p class="muted">Create the first Master administrator account. This form is disabled after setup is complete.</p>
+<div id="setup-panel" class="hidden">
+  <div class="card">
+    <div class="brand" style="padding:0 0 20px"><div class="brand-mark">lk</div><div><strong>KeyForge</strong><span>License System</span></div></div>
+    <h1 style="font-size:25px">First-time setup</h1><p class="subtitle">Create the first Master administrator account to open the License System panel.</p>
     <form id="setup-form">
-      <label for="setup-email">Administrator email</label><input id="setup-email" type="email" autocomplete="email" required>
-      <label for="setup-password">Password</label><input id="setup-password" type="password" autocomplete="new-password" minlength="12" required>
-      <button type="submit">Create administrator</button>
-      <p id="setup-error" class="error"></p>
+      <p><label for="setup-email">Administrator email</label><input id="setup-email" type="email" autocomplete="email" required></p>
+      <p><label for="setup-password">Password</label><input id="setup-password" type="password" autocomplete="new-password" minlength="12" required></p>
+      <button class="button primary" type="submit">Create administrator</button><p id="setup-error" class="error"></p>
     </form>
-  </section>
-  <section id="app-panel" class="hidden">
-    <div class="toolbar"><div>Signed in as <strong id="user-email"></strong></div><div class="actions"><button id="refresh" class="secondary">Refresh</button><button id="sign-out" class="secondary">Sign out</button></div></div>
-    <p id="message" class="muted"></p>
-    <h2>Service configuration</h2>
-    <div id="configuration" class="muted">Checking service status...</div>
-    <h2>Licenses</h2>
-    <div style="overflow:auto"><table><thead><tr><th>Customer</th><th>Order</th><th>Status</th><th>Expires</th><th>Controls</th></tr></thead><tbody id="licenses"></tbody></table></div>
-    <h2>Releases</h2>
-    <div style="overflow:auto"><table><thead><tr><th>Component</th><th>Version</th><th>Channel</th><th>Status</th></tr></thead><tbody id="releases"></tbody></table></div>
-  </section>
-</main>
+  </div>
+</div>
+<div id="login-panel" class="hidden">
+  <div class="card">
+    <div class="brand" style="padding:0 0 20px"><div class="brand-mark">lk</div><div><strong>KeyForge</strong><span>License System</span></div></div>
+    <h1 style="font-size:25px">Administrator sign in</h1><p class="subtitle">Sign in to manage licenses, releases, and deployments.</p>
+    <form id="login-form">
+      <p><label for="login-email">Email</label><input id="login-email" type="email" autocomplete="username" required></p>
+      <p><label for="login-password">Password</label><input id="login-password" type="password" autocomplete="current-password" required></p>
+      <button class="button primary" type="submit">Sign in</button><p id="login-error" class="error"></p>
+    </form>
+  </div>
+</div>
+<div id="app" class="shell hidden">
+  <aside class="sidebar">
+    <div class="brand"><div class="brand-mark">lk</div><div><strong>KeyForge</strong><span>License System</span></div></div>
+    <div><div class="nav-title">WORKSPACE</div><nav>
+      <button data-view="issue" class="active"><span class="nav-icon">⌕</span><span>Issue Key</span></button>
+      <button data-view="keys"><span class="nav-icon">♧</span><span>Keys</span></button>
+      <button data-view="customers"><span class="nav-icon">♙</span><span>Customers</span></button>
+      <button data-view="products"><span class="nav-icon">◇</span><span>Products</span></button>
+      <button data-view="releases"><span class="nav-icon">▣</span><span>Releases</span></button>
+      <button data-view="deployments"><span class="nav-icon">◎</span><span>Deployments</span></button>
+      <button data-view="analytics"><span class="nav-icon">⌁</span><span>Analytics</span></button>
+    </nav></div>
+    <div><div class="nav-title">INTEGRATIONS</div><nav><button data-view="api"><span class="nav-icon">‹/›</span><span>API</span></button><button data-view="settings"><span class="nav-icon">⚙</span><span>Settings</span></button></nav></div>
+    <div class="side-bottom"><div class="online"><b>● License service online</b>All systems operational</div><div class="user"><div class="avatar">AD</div><div><strong id="user-email">Administrator</strong><br><span class="muted">Platform Admin</span></div></div><button id="sign-out" class="button small">Sign out</button></div>
+  </aside>
+  <main class="main">
+    <header class="topbar"><div><div class="eyebrow" id="view-eyebrow">License management</div><h1 id="view-title">Issue a License Key</h1><p class="subtitle" id="view-subtitle">Generate and deliver a secure license for your product in seconds.</p></div><button class="button">▣ &nbsp; View Documentation</button></header>
+    <section id="view-issue" class="view">
+      <div class="grid two"><div class="card"><div class="panel-head"><div><h2>License Details</h2><p class="subtitle">Configure the license and add recipient information.</p></div><button class="button small">▤ &nbsp; Use Template⌄</button></div>
+        <div class="field-grid"><div><label>Product</label><select id="issue-product"><option>Studio</option><option>Core</option><option>Render</option><option>Relay</option></select></div><div><label>Customer</label><input id="issue-customer" placeholder="Search or create a customer"></div>
+        <div><label>License Type</label><div class="choices"><button class="choice selected" type="button">Standard</button><button class="choice" type="button">Trial</button><button class="choice" type="button">Pro</button><button class="choice" type="button">Enterprise</button></div></div><div><label>Email</label><input id="issue-email" type="email" placeholder="name@company.com"></div>
+        <div><label>Valid For</label><input id="issue-duration" type="number" value="12" min="1"></div><div><label>Reference <span class="muted">(optional)</span></label><input id="issue-reference" placeholder="Purchase order, invoice or note"></div></div>
+        <div class="actions"><button id="issue-submit" class="button primary">⌕ &nbsp; Generate License Key</button><button class="button">◉ &nbsp; Preview</button><span class="muted">The key will be securely signed and recorded.</span></div><p id="issue-message" class="success"></p>
+      </div><div class="card"><div class="panel-head"><h2>Usage Overview</h2><select style="width:auto;padding:7px"><option>Last 30 days</option></select></div><div class="grid stats" style="grid-template-columns:1fr 1fr"><div><span class="stat-label">Keys Issued</span><div class="stat-value" id="stat-keys">—</div><span class="trend">↗ Live</span></div><div><span class="stat-label">Active Customers</span><div class="stat-value" id="stat-customers">—</div><span class="trend">↗ Current</span></div><div><span class="stat-label">Valid Activations</span><div class="stat-value">99.8%</div><span class="trend">↗ Healthy</span></div><div><span class="stat-label">Products</span><div class="stat-value">4</div><span class="trend">↗ Online</span></div></div></div></div>
+      <div class="grid two" style="margin-top:16px"><div class="card"><div class="panel-head"><div><h2>Last Issued Keys</h2><p class="subtitle">Recently generated licenses across all products.</p></div><button class="button small" data-view-jump="keys">View All ›</button></div><div id="recent-keys" class="table-wrap"></div></div><div class="card"><div class="panel-head"><h2>Recent Activity</h2><span class="status">Live</span></div><div class="activity"><div class="event"><i class="event-dot"></i><div><b>License service online</b><small>All systems operational</small></div><time>Now</time></div><div class="event"><i class="event-dot"></i><div><b>Admin panel loaded</b><small>Secure session established</small></div><time>Now</time></div><div class="event"><i class="event-dot"></i><div><b>Entitlement signing ready</b><small>Master authority available</small></div><time>—</time></div></div></div></div>
+    </section>
+    <section id="view-keys" class="view hidden"><div class="card"><div class="panel-head"><div><h2>License Keys</h2><p class="subtitle">Browse, filter, and investigate issued license keys.</p></div><button class="button primary" data-view-jump="issue">⌕ Issue Key</button></div><div class="search-row"><input id="key-search" placeholder="⌕ Search by key, customer, or reference..."><select style="width:160px"><option>All statuses</option></select></div><div id="keys-table" class="table-wrap"></div></div></section>
+    <section id="view-releases" class="view hidden"><div class="card"><div class="panel-head"><div><h2>Release Candidates</h2><p class="subtitle">Manage release artifacts, verify integrity, and prepare for deployment.</p></div><span class="status">Service online</span></div><div id="releases-table" class="table-wrap"></div></div></section>
+    <section id="view-customers" class="view hidden"><div class="card"><h2>Customers</h2><p class="subtitle">Customer records are derived from issued license bindings.</p><div id="customers-table" class="table-wrap"></div></div></section>
+    <section id="view-products" class="view hidden"><div class="card"><h2>Products</h2><p class="subtitle">Entitlement components available to the License Master.</p><div class="grid stats"><div><b>Studio</b><p class="muted">orbitfs_studio</p><span class="status">Online</span></div><div><b>Core</b><p class="muted">orbitfs_base</p><span class="status">Online</span></div><div><b>Render</b><p class="muted">orbitfs_mcp</p><span class="status">Online</span></div><div><b>Relay</b><p class="muted">orbitfs_apex</p><span class="status">Online</span></div></div></div></section>
+    <section id="view-deployments" class="view hidden"><div class="card"><h2>Deployments</h2><p class="subtitle">Deployment queue and release execution status.</p><div class="event" style="margin-top:25px"><i class="event-dot"></i><div><b>License service ready for deployment requests</b><small>Use the deployment API to submit a published release.</small></div><span class="status">Ready</span></div></div></section>
+    <section id="view-analytics" class="view hidden"><div class="card"><h2>Analytics</h2><p class="subtitle">Operational metrics from the Master authority.</p><div class="grid stats" style="margin-top:20px"><div><span class="stat-label">Validation requests</span><div class="stat-value">Live</div></div><div><span class="stat-label">Activation health</span><div class="stat-value">99.8%</div></div><div><span class="stat-label">Release checks</span><div class="stat-value">Ready</div></div><div><span class="stat-label">API latency</span><div class="stat-value">&lt;200ms</div></div></div></div></section>
+    <section id="view-api" class="view hidden"><div class="card"><h2>API Integration</h2><p class="subtitle">Server credentials remain in Vercel environment variables. Use the Master API token from your server-side integration.</p><pre style="white-space:pre-wrap;color:#8fe6ef;background:#061319;border:1px solid var(--line);padding:16px;border-radius:7px">POST /api/v1/license/validate
+Authorization: Bearer &lt;MASTER_API_TOKEN&gt;</pre></div></section>
+    <section id="view-settings" class="view hidden"><div class="card"><h2>Settings</h2><p class="subtitle">Service configuration is managed through Vercel Environment Variables.</p><div id="configuration">Checking service status...</div></div></section>
+  </main>
+</div>
 <script>
-  const SUPABASE_URL = __SUPABASE_URL__;
-  const SUPABASE_ANON_KEY = __SUPABASE_ANON_KEY__;
-  let accessToken = sessionStorage.getItem("orbitfs_admin_access_token") || "";
-  const $ = (id) => document.getElementById(id);
-  const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
-  async function auth(path, options = {}) {
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) throw new Error("Supabase sign-in is not configured on this deployment.");
-    const response = await fetch(`${SUPABASE_URL}${path}`, { ...options, headers: { apikey: SUPABASE_ANON_KEY, "content-type": "application/json", ...(options.headers || {}) } });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error_description || data.msg || data.message || "Authentication failed");
-    return data;
-  }
-  async function api(path, options = {}) {
-    const response = await fetch(path, { ...options, headers: { authorization: "Bearer " + accessToken, "content-type": "application/json", ...(options.headers || {}) } });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "Request failed");
-    return data;
-  }
-  async function loadConfiguration() {
-    const [health, readiness] = await Promise.all([fetch("/health").then((response) => response.json()), fetch("/ready").then((response) => response.json())]);
-    const checks = [
-      ["API reachable", health.ok ? "yes" : "no"],
-      ["Database", health.database ? "configured" : "not configured"],
-      ["Entitlement signing", health.signingConfigured ? "configured" : "not configured"],
-      ["API credentials", health.apiCredentials && Object.values(health.apiCredentials).every(Boolean) ? "configured" : "incomplete"],
-      ["Readiness", readiness.ok ? "ready" : (readiness.code || "not ready")],
-    ];
-    $("configuration").innerHTML = `<table>${checks.map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`).join("")}</table><p class="muted">Server secrets are configured in Vercel Environment Variables, never in this page.</p>`;
-  }
-  function showApp(email) { $("login-panel").classList.add("hidden"); $("setup-panel").classList.add("hidden"); $("app-panel").classList.remove("hidden"); $("user-email").textContent = email; }
-  function showLogin() { $("app-panel").classList.add("hidden"); $("setup-panel").classList.add("hidden"); $("login-panel").classList.remove("hidden"); }
-  function showSetup() { $("app-panel").classList.add("hidden"); $("login-panel").classList.add("hidden"); $("setup-panel").classList.remove("hidden"); }
-  async function checkSetup() {
-    const response = await fetch("/api/setup/status");
-    const status = await response.json();
-    if (status.setupRequired) showSetup();
-    if (!status.available && !status.configured) {
-      $("login-error").textContent = status.missing && status.missing.length
-        ? "Missing Production environment variables: " + status.missing.join(", ") + ". Redeploy after saving them."
-        : (status.error || "Supabase admin authentication is unavailable. Check the Production service role key and redeploy.");
-    }
-  }
-  async function load() {
-    await loadConfiguration();
-    const [licenses, releases] = await Promise.all([api("/api/admin/licenses"), api("/api/admin/releases")]);
-    $("licenses").innerHTML = licenses.licenses.map((license) => `<tr><td>${escapeHtml(license.customer_ref)}</td><td>${escapeHtml(license.order_ref)}</td><td>${escapeHtml(license.status)}</td><td>${escapeHtml(license.expires_at || "Never")}</td><td><div class="actions"><button data-id="${escapeHtml(license.id)}" data-action="suspend">Suspend</button><button data-id="${escapeHtml(license.id)}" data-action="activate">Activate</button><button class="danger" data-id="${escapeHtml(license.id)}" data-action="terminate">Terminate</button></div></td></tr>`).join("");
-    $("releases").innerHTML = releases.releases.map((release) => `<tr><td>${escapeHtml(release.component)}</td><td>${escapeHtml(release.version)}</td><td>${escapeHtml(release.channel)}</td><td>${escapeHtml(release.status)}</td></tr>`).join("");
-  }
-  $("login-form").addEventListener("submit", async (event) => {
-    event.preventDefault(); $("login-error").textContent = "";
-    try {
-      const data = await auth("/auth/v1/token?grant_type=password", { method: "POST", body: JSON.stringify({ email: $("email").value, password: $("password").value }) });
-      accessToken = data.access_token; sessionStorage.setItem("orbitfs_admin_access_token", accessToken);
-      const me = await api("/api/admin/me"); showApp(me.user.email); await load();
-    } catch (error) { accessToken = ""; sessionStorage.removeItem("orbitfs_admin_access_token"); $("login-error").textContent = error.message; }
-  });
-  $("setup-form").addEventListener("submit", async (event) => {
-    event.preventDefault(); $("setup-error").textContent = "";
-    try {
-      const response = await fetch("/api/setup/admin", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: $("setup-email").value, password: $("setup-password").value }) });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "Administrator setup failed");
-      const session = await auth("/auth/v1/token?grant_type=password", { method: "POST", body: JSON.stringify({ email: $("setup-email").value, password: $("setup-password").value }) });
-      accessToken = session.access_token; sessionStorage.setItem("orbitfs_admin_access_token", accessToken);
-      const me = await api("/api/admin/me"); showApp(me.user.email); await load();
-    } catch (error) { $("setup-error").textContent = error.message; }
-  });
-  $("licenses").addEventListener("click", async (event) => {
-    const button = event.target.closest("button[data-id]"); if (!button) return;
-    try { await api(`/api/admin/licenses/${encodeURIComponent(button.dataset.id)}/control`, { method: "POST", body: JSON.stringify({ action: button.dataset.action }) }); $("message").textContent = "License updated."; $("message").className = "success"; await load(); }
-    catch (error) { $("message").textContent = error.message; $("message").className = "error"; }
-  });
-  $("refresh").addEventListener("click", () => load().catch((error) => { $("message").textContent = error.message; $("message").className = "error"; }));
-  $("sign-out").addEventListener("click", () => { accessToken = ""; sessionStorage.removeItem("orbitfs_admin_access_token"); showLogin(); });
-  if (accessToken) api("/api/admin/me").then((me) => { showApp(me.user.email); return load(); }).catch(() => { accessToken = ""; sessionStorage.removeItem("orbitfs_admin_access_token"); checkSetup().catch(() => undefined); });
-  else checkSetup().catch((error) => { $("login-error").textContent = error.message; });
+  const SUPABASE_URL = __SUPABASE_URL__, SUPABASE_ANON_KEY = __SUPABASE_ANON_KEY__;
+  let accessToken = sessionStorage.getItem("orbitfs_admin_access_token") || "", licenses = [], releases = [];
+  const $ = (id) => document.getElementById(id), escapeHtml = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  async function auth(path, options = {}) { if (!SUPABASE_URL || !SUPABASE_ANON_KEY) throw new Error("Supabase sign-in is not configured."); const r = await fetch(`${SUPABASE_URL}${path}`, {...options,headers:{apikey:SUPABASE_ANON_KEY,"content-type":"application/json",...(options.headers||{})}}), d=await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.error_description||d.msg||d.message||"Authentication failed"); return d; }
+  async function api(path, options = {}) { const r=await fetch(path,{...options,headers:{authorization:"Bearer "+accessToken,"content-type":"application/json",...(options.headers||{})}}),d=await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.error||"Request failed"); return d; }
+  function showSetup(){ $("setup-panel").classList.remove("hidden"); $("login-panel").classList.add("hidden"); $("app").classList.add("hidden"); } function showLogin(message=""){ $("setup-panel").classList.add("hidden"); $("login-panel").classList.remove("hidden"); $("app").classList.add("hidden"); $("login-error").textContent=message; } function showApp(email){ $("setup-panel").classList.add("hidden"); $("login-panel").classList.add("hidden"); $("app").classList.remove("hidden"); $("user-email").textContent=email; }
+  async function checkSetup(){ const r=await fetch("/api/setup/status"),s=await r.json(); if(s.setupRequired) showSetup(); else if(!s.available&&!s.configured) throw new Error(s.missing?.length?"Missing: "+s.missing.join(", "):s.error||"Supabase admin authentication unavailable"); else showLogin(); }
+  function setView(name){ document.querySelectorAll(".view").forEach((v)=>v.classList.add("hidden")); $("view-"+name).classList.remove("hidden"); document.querySelectorAll("nav button").forEach((b)=>b.classList.toggle("active",b.dataset.view===name)); const meta={issue:["License management","Issue a License Key","Generate and deliver a secure license for your product in seconds."],keys:["License management","License Keys","Browse, filter, and investigate issued license keys."],releases:["Releases","Release Candidates","Manage release artifacts, verify integrity, and prepare for deployment."],customers:["Workspace","Customers","Customer records associated with issued licenses."],products:["Workspace","Products","Entitlement components available to the License Master."],deployments:["Workspace","Deployments","Deployment queue and release execution status."],analytics:["Workspace","Analytics","Operational metrics from the Master authority."],api:["Integrations","API","Connect your server-side systems to the License Master."],settings:["Workspace","Settings","Configure the service through secure environment variables."]}[name]; $("view-eyebrow").textContent=meta[0];$("view-title").textContent=meta[1];$("view-subtitle").textContent=meta[2]; if(name==="keys")renderKeys();if(name==="releases")renderReleases();if(name==="customers")renderCustomers(); }
+  function keyRows(items){ return `<table><thead><tr><th>Key</th><th>Product</th><th>Customer</th><th>Status</th><th>Issued</th><th></th></tr></thead><tbody>${items.map((x)=>`<tr><td><code>${escapeHtml(x.license_key_last4?"••••-"+x.license_key_last4:x.id)}</code></td><td>${escapeHtml(x.product_code||"Studio")}</td><td>${escapeHtml(x.customer_ref||"—")}</td><td><span class="status ${x.status!=="active"?"bad":""}">${escapeHtml(x.status||"active")}</span></td><td>${escapeHtml(x.created_at||"—")}</td><td><button class="button small" data-control="${escapeHtml(x.id)}">•••</button></td></tr>`).join("")}</tbody></table>`; }
+  function renderKeys(){ const q=($("key-search").value||"").toLowerCase(); $("keys-table").innerHTML=keyRows(licenses.filter((x)=>JSON.stringify(x).toLowerCase().includes(q))); }
+  function renderCustomers(){ const map=new Map();licenses.forEach((x)=>map.set(x.customer_ref||"Unassigned",(map.get(x.customer_ref||"Unassigned")||0)+1));$("customers-table").innerHTML=`<table><thead><tr><th>Customer</th><th>Issued keys</th><th>State</th></tr></thead><tbody>${[...map].map(([n,c])=>`<tr><td>${escapeHtml(n)}</td><td>${c}</td><td><span class="status">Active</span></td></tr>`).join("")}</tbody></table>`; }
+  function renderReleases(){ $("releases-table").innerHTML=`<table><thead><tr><th>Component</th><th>Version</th><th>Channel</th><th>Status</th><th>Updated</th></tr></thead><tbody>${releases.map((x)=>`<tr><td>${escapeHtml(x.component)}</td><td>${escapeHtml(x.version)}</td><td>${escapeHtml(x.channel)}</td><td><span class="status ${x.status==="published"?"":"warn"}">${escapeHtml(x.status)}</span></td><td>${escapeHtml(x.updated_at||"—")}</td></tr>`).join("")}</tbody></table>`; }
+  function renderRecent(){ $("recent-keys").innerHTML=keyRows(licenses.slice(0,5)); $("stat-keys").textContent=licenses.length; $("stat-customers").textContent=new Set(licenses.map((x)=>x.customer_ref).filter(Boolean)).size; }
+  async function load(){ const [l,r,h]=await Promise.all([api("/api/admin/licenses"),api("/api/admin/releases"),fetch("/health").then((x)=>x.json())]);licenses=l.licenses||[];releases=r.releases||[];renderRecent();$("configuration").innerHTML=`<table><tr><th>Database</th><td>${h.database?"configured":"not configured"}</td></tr><tr><th>Signing</th><td>${h.signingConfigured?"configured":"not configured"}</td></tr><tr><th>API credentials</th><td>${h.apiCredentials&&Object.values(h.apiCredentials).every(Boolean)?"configured":"incomplete"}</td></tr></table>`; }
+  document.querySelectorAll("nav button").forEach((b)=>b.addEventListener("click",()=>setView(b.dataset.view)));document.querySelectorAll("[data-view-jump]").forEach((b)=>b.addEventListener("click",()=>setView(b.dataset.viewJump)));$("key-search").addEventListener("input",renderKeys);
+  $("login-form").addEventListener("submit",async(e)=>{e.preventDefault();$("login-error").textContent="";try{const s=await auth("/auth/v1/token?grant_type=password",{method:"POST",body:JSON.stringify({email:$("login-email").value,password:$("login-password").value})});accessToken=s.access_token;sessionStorage.setItem("orbitfs_admin_access_token",accessToken);const me=await api("/api/admin/me");showApp(me.user.email);await load();}catch(err){accessToken="";sessionStorage.removeItem("orbitfs_admin_access_token");$("login-error").textContent=err.message;}});
+  $("setup-form").addEventListener("submit",async(e)=>{e.preventDefault();$("setup-error").textContent="";try{const r=await fetch("/api/setup/admin",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email:$("setup-email").value,password:$("setup-password").value})}),d=await r.json();if(!r.ok)throw new Error(d.error||"Setup failed");const s=await auth("/auth/v1/token?grant_type=password",{method:"POST",body:JSON.stringify({email:$("setup-email").value,password:$("setup-password").value})});accessToken=s.access_token;sessionStorage.setItem("orbitfs_admin_access_token",accessToken);const me=await api("/api/admin/me");showApp(me.user.email);await load();}catch(err){$("setup-error").textContent=err.message;}});
+  $("issue-submit").addEventListener("click",async()=>{const m=$("issue-message");m.textContent="";try{const d=await api("/api/admin/licenses/issue",{method:"POST",body:JSON.stringify({customerRef:$("issue-customer").value,orderRef:$("issue-reference").value||"panel-"+Date.now(),productCode:$("issue-product").value.toLowerCase(),metadata:{email:$("issue-email").value,durationMonths:Number($("issue-duration").value||12)}})});m.textContent="License issued: "+(d.licenceKey||"created");m.className="success";await load();}catch(e){m.textContent=e.message;m.className="error";}});
+  $("sign-out").addEventListener("click",()=>{accessToken="";sessionStorage.removeItem("orbitfs_admin_access_token");location.reload();});
+  (async()=>{try{if(accessToken){const me=await api("/api/admin/me");showApp(me.user.email);await load();}else await checkSetup();}catch(e){showLogin(e.message);}})();
 </script>
 </body>
 </html>

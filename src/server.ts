@@ -240,8 +240,8 @@ const requireAdmin = async (req: IncomingMessage) => {
 
 const actorFrom = (req: IncomingMessage, fallback = "master") => String(req.headers["x-actor-ref"] || role(req) || fallback).slice(0, 200);
 
-async function issue(req: IncomingMessage, res: ServerResponse) {
-  if (!allowed(req, ["billing", "master"])) return json(res, 401, { error: "Unauthorized" });
+async function issue(req: IncomingMessage, res: ServerResponse, authenticated = false) {
+  if (!authenticated && !allowed(req, ["billing", "master"])) return json(res, 401, { error: "Unauthorized" });
   const input = await body(req);
   const orderRef = String(input.orderRef || req.headers["x-orbitfs-order-ref"] || "").trim();
   if (!orderRef || orderRef.length > 200) return json(res, 400, { error: "orderRef is required" });
@@ -668,6 +668,11 @@ async function adminControl(req: IncomingMessage, res: ServerResponse, id: strin
   return control(req, res, id, true);
 }
 
+async function adminIssue(req: IncomingMessage, res: ServerResponse) {
+  await requireAdmin(req);
+  return issue(req, res, true);
+}
+
 const adminPage = () => {
   const html = readFileSync(new URL("../web/admin.html", import.meta.url), "utf8");
   return html.replace("__SUPABASE_URL__", JSON.stringify(SUPABASE_URL)).replace("__SUPABASE_ANON_KEY__", JSON.stringify(SUPABASE_ANON_KEY));
@@ -745,6 +750,7 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     if (path === "/api/v1/license/revision") return json(res, 200, { service: "OrbitFS License Master", version: "2.0.0", authority: "master", components: COMPONENTS });
     if (path === "/api/v1/license/validate" && req.method === "POST") return validate(req, res);
     if (path === "/api/v1/license/issue" && req.method === "POST") return issue(req, res);
+    if (path === "/api/admin/licenses/issue" && req.method === "POST") return adminIssue(req, res);
     if (path === "/api/v1/licenses" && req.method === "GET") {
       if (!allowed(req, ["master", "billing"])) return json(res, 401, { error: "Unauthorized" });
       return json(res, 200, { licenses: (await query<JsonObject>("select * from license_bindings where archived_at is null order by created_at desc limit 500")).rows.map(publicBinding) });
