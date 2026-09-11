@@ -694,7 +694,3 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
 
 // Vercel loads this module inside a serverless function; never start the local
 // development listener there, even if NODE_ENV is missing from the deployment.
-if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-  const { createServer } = await import("node:http");
-  createServer(handler).listen(Number(process.env.PORT || 3000), () => console.log("OrbitFS License Master listening"));
-}
