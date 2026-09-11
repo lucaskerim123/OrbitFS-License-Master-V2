@@ -609,6 +609,7 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     res.setHeader("access-control-allow-headers", "content-type,authorization,x-orbitfs-order-ref,x-artifact-sha256,x-actor-ref");
     res.setHeader("access-control-allow-methods", "GET,POST,OPTIONS");
   }
+
   res.setHeader("x-content-type-options", "nosniff");
   res.setHeader("referrer-policy", "no-referrer");
   if (req.method === "OPTIONS") return originAllowed ? ((res.statusCode = 204), res.end()) : json(res, 403, { error: "Origin is not allowed" });
@@ -691,6 +692,10 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     });
   }
 }
+
+// Vercel may discover imported modules as function entries; expose the same
+// callable as a default export so its runtime loader accepts this module.
+export default handler;
 
 // Vercel loads this module inside a serverless function; never start the local
 // development listener there, even if NODE_ENV is missing from the deployment.
