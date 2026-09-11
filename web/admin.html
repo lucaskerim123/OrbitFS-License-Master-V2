@@ -11,8 +11,8 @@
     h1 { margin-top: 0; } .muted { color: #9aa5b1; }
     form, section { background: #191f27; border: 1px solid #303946; border-radius: 10px; padding: 1rem; margin: 1rem 0; }
     label { display: block; margin: .7rem 0 .25rem; color: #c6d0db; }
-    input, button, select { font: inherit; border-radius: 6px; padding: .55rem .7rem; border: 1px solid #485363; }
-    input, select { width: 100%; box-sizing: border-box; background: #0f141a; color: #fff; }
+    input, button { font: inherit; border-radius: 6px; padding: .55rem .7rem; border: 1px solid #485363; }
+    input { width: 100%; box-sizing: border-box; background: #0f141a; color: #fff; }
     button { cursor: pointer; background: #3d82f6; color: white; border-color: #3d82f6; margin-top: .8rem; }
     button.secondary { background: transparent; border-color: #687588; } button.danger { background: #c43c4b; border-color: #c43c4b; }
     table { width: 100%; border-collapse: collapse; margin-top: .7rem; } th, td { text-align: left; padding: .6rem; border-bottom: 1px solid #303946; vertical-align: top; }
@@ -37,6 +37,8 @@
   <section id="app-panel" class="hidden">
     <div class="toolbar"><div>Signed in as <strong id="user-email"></strong></div><div class="actions"><button id="refresh" class="secondary">Refresh</button><button id="sign-out" class="secondary">Sign out</button></div></div>
     <p id="message" class="muted"></p>
+    <h2>Service configuration</h2>
+    <div id="configuration" class="muted">Checking service status...</div>
     <h2>Licenses</h2>
     <div style="overflow:auto"><table><thead><tr><th>Customer</th><th>Order</th><th>Status</th><th>Expires</th><th>Controls</th></tr></thead><tbody id="licenses"></tbody></table></div>
     <h2>Releases</h2>
@@ -50,6 +52,7 @@
   const $ = (id) => document.getElementById(id);
   const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
   async function auth(path, options = {}) {
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) throw new Error("Supabase sign-in is not configured on this deployment.");
     const response = await fetch(`${SUPABASE_URL}${path}`, { ...options, headers: { apikey: SUPABASE_ANON_KEY, "content-type": "application/json", ...(options.headers || {}) } });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error_description || data.msg || data.message || "Authentication failed");
@@ -61,9 +64,23 @@
     if (!response.ok) throw new Error(data.error || "Request failed");
     return data;
   }
+  async function loadConfiguration() {
+    const [health, readiness] = await Promise.all([
+      fetch("/health").then((response) => response.json()),
+      fetch("/ready").then((response) => response.json()),
+    ]);
+    const checks = [
+      ["API reachable", health.ok ? "yes" : "no"],
+      ["Database", health.database ? "configured" : "not configured"],
+      ["Entitlement signing", health.signingConfigured ? "configured" : "not configured"],
+      ["Readiness", readiness.ok ? "ready" : (readiness.code || "not ready")],
+    ];
+    $("configuration").innerHTML = `<table>${checks.map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`).join("")}</table><p class="muted">Server secrets are configured in Vercel Environment Variables, never in this page.</p>`;
+  }
   function showApp(email) { $("login-panel").classList.add("hidden"); $("app-panel").classList.remove("hidden"); $("user-email").textContent = email; }
   function showLogin() { $("app-panel").classList.add("hidden"); $("login-panel").classList.remove("hidden"); }
   async function load() {
+    await loadConfiguration();
     const [licenses, releases] = await Promise.all([api("/api/admin/licenses"), api("/api/admin/releases")]);
     $("licenses").innerHTML = licenses.licenses.map((license) => `<tr><td>${escapeHtml(license.customer_ref)}</td><td>${escapeHtml(license.order_ref)}</td><td>${escapeHtml(license.status)}</td><td>${escapeHtml(license.expires_at || "Never")}</td><td><div class="actions"><button data-id="${escapeHtml(license.id)}" data-action="suspend">Suspend</button><button data-id="${escapeHtml(license.id)}" data-action="activate">Activate</button><button class="danger" data-id="${escapeHtml(license.id)}" data-action="terminate">Terminate</button></div></td></tr>`).join("");
     $("releases").innerHTML = releases.releases.map((release) => `<tr><td>${escapeHtml(release.component)}</td><td>${escapeHtml(release.version)}</td><td>${escapeHtml(release.channel)}</td><td>${escapeHtml(release.status)}</td></tr>`).join("");
@@ -78,10 +95,10 @@
   });
   $("licenses").addEventListener("click", async (event) => {
     const button = event.target.closest("button[data-id]"); if (!button) return;
-    try { await api(`/api/admin/licenses/${encodeURIComponent(button.dataset.id)}/control`, { method: "POST", body: JSON.stringify({ action: button.dataset.action }) }); $("message").textContent = "License updated."; await load(); }
+    try { await api(`/api/admin/licenses/${encodeURIComponent(button.dataset.id)}/control`, { method: "POST", body: JSON.stringify({ action: button.dataset.action }) }); $("message").textContent = "License updated."; $("message").className = "success"; await load(); }
     catch (error) { $("message").textContent = error.message; $("message").className = "error"; }
   });
-  $("refresh").addEventListener("click", () => load().catch((error) => { $("message").textContent = error.message; }));
+  $("refresh").addEventListener("click", () => load().catch((error) => { $("message").textContent = error.message; $("message").className = "error"; }));
   $("sign-out").addEventListener("click", () => { accessToken = ""; sessionStorage.removeItem("orbitfs_admin_access_token"); showLogin(); });
   if (accessToken) api("/api/admin/me").then((me) => { showApp(me.user.email); return load(); }).catch(() => { accessToken = ""; sessionStorage.removeItem("orbitfs_admin_access_token"); });
 </script>
