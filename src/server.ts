@@ -117,6 +117,13 @@ const publicPem = () => {
   const pem = privatePem();
   return pem ? createPublicKey(createPrivateKey(pem)).export({ type: "spki", format: "pem" }).toString() : "";
 };
+const signingStatus = () => {
+  try {
+    return Boolean(publicPem());
+  } catch {
+    return false;
+  }
+};
 const entitlement = (payload: JsonObject) => {
   const pem = privatePem();
   if (!pem) throw new HttpError(503, "Entitlement signing is not configured");
@@ -640,18 +647,30 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
       return json(res, 200, { ok: true, service: "OrbitFS License Master", version: "2.0.0", database, signingConfigured: !!privatePem() });
     }
     if (path === "/ready" || path === "/api/ready") {
-      const database = !!db && (await query("select 1")).rowCount === 1;
-      const signingConfigured = !!privatePem();
+      let database = false;
+      if (db) {
+        try {
+          database = (await query("select 1")).rowCount === 1;
+        } catch {
+          database = false;
+        }
+      }
+      const signingConfigured = signingStatus();
       return json(res, database && signingConfigured ? 200 : 503, {
         ok: database && signingConfigured,
         service: "OrbitFS License Master",
+        code: database ? signingConfigured ? undefined : "SIGNING_KEY_INVALID" : "DATABASE_UNAVAILABLE",
         database,
         signingConfigured,
       });
     }
     if (path === "/api/v1/license/public-key") {
-      const key = publicPem();
-      return key ? text(res, 200, key) : json(res, 503, { error: "Entitlement signing is not configured" });
+      try {
+        const key = publicPem();
+        return key ? text(res, 200, key) : json(res, 503, { error: "Entitlement signing is not configured", code: "SIGNING_KEY_MISSING" });
+      } catch {
+        return json(res, 503, { error: "Entitlement signing key is invalid", code: "SIGNING_KEY_INVALID" });
+      }
     }
     if (path === "/api/v1/license/revision") return json(res, 200, { service: "OrbitFS License Master", version: "2.0.0", authority: "master", components: COMPONENTS });
     if (path === "/api/v1/license/validate" && req.method === "POST") return validate(req, res);
