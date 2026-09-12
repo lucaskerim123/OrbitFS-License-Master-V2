@@ -12,8 +12,6 @@
     "api/admin-control-login.ts": { "maxDuration": 10 }
   },
   "rewrites": [
-    { "source": "/admin", "destination": "/api/admin" },
-    { "source": "/admin/", "destination": "/api/admin" },
     { "source": "/admin/products", "destination": "/api/admin-products-ui" },
     { "source": "/v1/products", "destination": "/api/products" },
     { "source": "/v1/products/:path*", "destination": "/api/products" },
