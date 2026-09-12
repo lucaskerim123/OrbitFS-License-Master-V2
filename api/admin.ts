@@ -17,6 +17,7 @@ window.loadReleaseSources=async function(){
     ['baseSource','updateSource'].forEach(id=>{if($(id))$(id).innerHTML='<b>Release source unavailable</b><span>'+esc(e.message)+'</span>';});
   }
 };
+setTimeout(()=>{if(window.loadReleaseSources)window.loadReleaseSources()},0);
 </script></body>`);
     res.statusCode = 200;
     res.setHeader("content-type", "text/html; charset=utf-8");
