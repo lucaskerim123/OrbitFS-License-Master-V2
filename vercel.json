@@ -17,8 +17,6 @@
     { "source": "/v1/products", "destination": "/api/products" },
     { "source": "/v1/products/:path*", "destination": "/api/products" },
     { "source": "/api/v1/products", "destination": "/api/products" },
-    { "source": "/api/v1/products/:path*", "destination": "/api/products" },
-    { "source": "/api/admin/control-login", "destination": "/api/admin-control-login" },
-    { "source": "/api/auth/login", "destination": "/api/admin-control-login" }
+    { "source": "/api/v1/products/:path*", "destination": "/api/products" }
   ]
 }
