@@ -138,19 +138,37 @@ async function productAction(req: IncomingMessage, res: ServerResponse) {
 async function settingsAction(req: IncomingMessage, res: ServerResponse) {
   try {
     if (req.method === "GET") {
-      const rows = await supabaseJson("/rest/v1/master_license_settings?id=eq.primary&select=*");
-      return json(res, 200, { settings: Array.isArray(rows) ? rows[0] || {} : {} });
+      let rows = await supabaseJson("/rest/v1/master_license_settings?id=eq.primary&select=*");
+      if (!Array.isArray(rows) || !rows[0]) {
+        rows = await supabaseJson("/rest/v1/master_license_settings?select=*&limit=1");
+      }
+      const settings = Array.isArray(rows) && rows[0] ? rows[0] : {
+        id: "primary", enabled: true, mode: "active", issuer: "orbitfs-license-master", audience: "orbitfs-runtime",
+        entitlement_ttl_seconds: 10800, grace_seconds: 604800, allow_offline_grace: true, revision: 1,
+      };
+      return json(res, 200, { settings, database: true, settings_found: Boolean(Array.isArray(rows) && rows[0]) });
     }
     if (req.method === "PATCH" || req.method === "POST") {
       const input = await readBody(req);
+      const existingRows = await supabaseJson("/rest/v1/master_license_settings?id=eq.primary&select=*");
+      const existing = Array.isArray(existingRows) ? existingRows[0] || {} : {};
+      const mode = String(input.mode ?? existing.mode ?? "active").toLowerCase();
+      const enabled = input.enabled === undefined ? existing.enabled !== false : Boolean(input.enabled);
+      if (!["active", "offline", "maintenance"].includes(mode)) return json(res, 400, { error: "mode must be active, offline, or maintenance" });
       const payload = {
         id: "primary",
-        issuer: String(input.issuer || "orbitfs-license-master"), audience: String(input.audience || "orbitfs-runtime"),
-        entitlement_ttl_seconds: Math.max(60, Math.floor(Number(input.entitlement_ttl_seconds || 10800))),
-        grace_seconds: Math.max(0, Math.floor(Number(input.grace_seconds || 604800))), revision: Number(input.revision || 1), updated_at: new Date().toISOString(),
+        enabled,
+        mode,
+        issuer: String(input.issuer ?? existing.issuer ?? "orbitfs-license-master"),
+        audience: String(input.audience ?? existing.audience ?? "orbitfs-runtime"),
+        entitlement_ttl_seconds: Math.max(60, Math.floor(Number(input.entitlement_ttl_seconds ?? existing.entitlement_ttl_seconds ?? 10800))),
+        grace_seconds: Math.max(0, Math.floor(Number(input.grace_seconds ?? existing.grace_seconds ?? 604800))),
+        allow_offline_grace: input.allow_offline_grace === undefined ? existing.allow_offline_grace !== false : Boolean(input.allow_offline_grace),
+        revision: Number(existing.revision || 0) + 1,
+        updated_at: new Date().toISOString(),
       };
       const rows = await supabaseJson("/rest/v1/master_license_settings?on_conflict=id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=representation" }, body: JSON.stringify(payload) });
-      return json(res, 200, { settings: Array.isArray(rows) ? rows[0] : rows });
+      return json(res, 200, { settings: Array.isArray(rows) ? rows[0] : rows, database: true });
     }
     return json(res, 405, { error: "Method not allowed" });
   } catch (error) {
@@ -160,7 +178,7 @@ async function settingsAction(req: IncomingMessage, res: ServerResponse) {
 
 async function healthAction(_req: IncomingMessage, res: ServerResponse) {
   try {
-    const rows = await supabaseJson("/rest/v1/master_license_settings?id=eq.primary&select=id");
+    const rows = await supabaseJson("/rest/v1/master_license_settings?id=eq.primary&select=id,enabled,mode,revision");
     return json(res, 200, { ok: true, database: true, settings: Array.isArray(rows) && rows.length > 0, api: "License Master V2" });
   } catch (error) {
     return json(res, 503, { ok: false, database: false, api: "License Master V2", error: error instanceof Error ? error.message : "Database health check failed" });
