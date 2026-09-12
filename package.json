@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/dev.ts",
-    "build": "node scripts/ensure-admin-auth-route.mjs && echo OrbitFS-License-Master build completed",
+    "build": "node scripts/ensure-admin-auth-route.mjs && node scripts/ensure-db-transport.mjs && echo OrbitFS-License-Master build completed",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit"
   },
