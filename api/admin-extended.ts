@@ -54,3 +54,5 @@ export default async function adminExtended(req: IncomingMessage, res: ServerRes
     if (oldAuth === undefined) delete req.headers.authorization; else req.headers.authorization = oldAuth;
   }
 }
+
+// Product API build integration is applied by tools/apply-product-api-patch.mjs.
