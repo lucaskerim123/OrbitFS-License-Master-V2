@@ -26,7 +26,7 @@ function json(res: ServerResponse, status: number, data: unknown) {
   res.end(JSON.stringify(data));
 }
 
-export default async function login(req: IncomingMessage, res: ServerResponse) {
+export default async function login(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (req.method !== "POST") return json(res, 405, { error: "Method not allowed" });
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     return json(res, 503, { error: "Supabase authentication is not configured" });
@@ -43,19 +43,32 @@ export default async function login(req: IncomingMessage, res: ServerResponse) {
       headers: { apikey: SUPABASE_ANON_KEY, "content-type": "application/json" },
       body: JSON.stringify({ email, password }),
     });
-    const data = await response.json().catch(() => ({})) as Record<string, any>;
-    if (!response.ok || !data.access_token) {
+    const rawData: unknown = await response.json().catch(() => ({}));
+    if (
+      !response.ok ||
+      typeof rawData !== 'object' ||
+      rawData === null ||
+      typeof (rawData as { access_token?: unknown }).access_token !== 'string'
+    ) {
       return json(res, 401, { error: "Invalid License Master administrator credentials" });
     }
+    const data = rawData as { access_token: string; expires_in: number };
 
     const userResponse = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
       headers: { apikey: SUPABASE_ANON_KEY, authorization: `Bearer ${data.access_token}` },
     });
     if (!userResponse.ok) return json(res, 401, { error: "Unable to verify administrator account" });
 
-    const user = await userResponse.json() as Record<string, any>;
-    const metadata = user.app_metadata && typeof user.app_metadata === "object" ? user.app_metadata : {};
-    if (!adminEmails.has(String(user.email || email).toLowerCase()) && metadata.role !== "admin") {
+    const rawUser: unknown = await userResponse.json();
+    if (typeof rawUser !== 'object' || rawUser === null) {
+      return json(res, 401, { error: "Unable to verify administrator account" });
+    }
+    const user = rawUser as { id: string; email: string; app_metadata?: unknown };
+    const metadata =
+      typeof user.app_metadata === 'object' && user.app_metadata !== null
+        ? (user.app_metadata as { role?: string })
+        : {};
+    if (!adminEmails.has(user.email.toLowerCase()) && metadata.role !== "admin") {
       return json(res, 403, { error: "Administrator access is required" });
     }
 
@@ -64,7 +77,7 @@ export default async function login(req: IncomingMessage, res: ServerResponse) {
       expires_in: data.expires_in,
       user: { id: user.id, email: user.email },
     });
-  } catch (error) {
+  } catch (error: unknown) {
     return json(res, 400, { error: error instanceof Error ? error.message : "Authentication failed" });
   }
 }

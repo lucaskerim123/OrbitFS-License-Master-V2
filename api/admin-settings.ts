@@ -14,7 +14,7 @@ async function admin(req: IncomingMessage) {
   if (MASTER && t === MASTER) return true;
   const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SERVICE, authorization: `Bearer ${t}` } });
   if (!r.ok) return false;
-  const u = await r.json() as any;
+  const u = await r.json() as { email?: string; app_metadata?: { role?: string } };
   return ADMIN_EMAILS.has(String(u.email || "").toLowerCase()) || u.app_metadata?.role === "admin";
 }
 async function sb(path: string, init: RequestInit = {}) {

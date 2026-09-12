@@ -34,15 +34,15 @@ const readBody = (req: IncomingMessage) => new Promise<Record<string, unknown>>(
   req.on("error", reject);
 });
 
-async function isAdmin(req: IncomingMessage) {
+async function isAdmin(req: IncomingMessage): Promise<boolean> {
   const auth = String(req.headers.authorization || "");
   const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
   if (!token || !SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
   const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SUPABASE_ANON_KEY, authorization: `Bearer ${token}` } });
   if (!response.ok) return false;
-  const user = await response.json() as Record<string, any>;
-  const metadata = user.app_metadata && typeof user.app_metadata === "object" ? user.app_metadata : {};
-  return adminEmails.has(String(user.email || "").toLowerCase()) || metadata.role === "admin";
+  const user = await response.json() as Record<string, unknown>;
+  const metadata = user.app_metadata && typeof user.app_metadata === "object" ? user.app_metadata as Record<string, unknown> : {};
+  return adminEmails.has(String(user.email).toLowerCase()) || metadata.role === "admin";
 }
 
 async function supabase(path: string, init: RequestInit = {}) {
@@ -58,21 +58,21 @@ async function supabase(path: string, init: RequestInit = {}) {
   });
 }
 
-async function supabaseJson(path: string, init: RequestInit = {}) {
+async function supabaseJson<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await supabase(path, { headers: { accept: "application/json", ...(init.headers || {}) }, ...init });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(String((data as any)?.message || (data as any)?.hint || (data as any)?.error || `Supabase request failed (${response.status})`));
-  return data;
+  const data: unknown = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    let errorMessage: string;
+    if (typeof data === 'object' && data !== null) {
+      const errObj = data as { message?: unknown; hint?: unknown; error?: unknown };
+      errorMessage = String(errObj.message ?? errObj.hint ?? errObj.error ?? `Supabase request failed (${response.status})`);
+    } else {
+      errorMessage = `Supabase request failed (${response.status})`;
+    }
+    throw new Error(errorMessage);
+  }
+  return data as T;
 }
-
-async function githubSource(repo: string, branch: string) {
-  if (!GITHUB_TOKEN) throw new Error("GITHUB_TOKEN is not configured for private release source access");
-  const response = await fetch(`https://api.github.com/repos/${repo}/commits?sha=${encodeURIComponent(branch)}&per_page=1`, {
-    headers: { accept: "application/vnd.github+json", authorization: `Bearer ${GITHUB_TOKEN}`, "x-github-api-version": "2022-11-28", "user-agent": "OrbitFS-License-Master-V2" },
-  });
-  const data = await response.json().catch(() => []);
-  if (!response.ok) throw new Error(data && typeof data === "object" ? String(data.message || "GitHub source lookup failed") : "GitHub source lookup failed");
-  const commit = Array.isArray(data) ? data[0] : null;
   if (!commit?.sha) throw new Error(`No commits found for ${repo} / ${branch}`);
   return { repo, branch, sha: String(commit.sha), shortSha: String(commit.sha).slice(0, 12), message: String(commit.commit?.message || "").split("\n")[0] || "No commit message", date: commit.commit?.author?.date || commit.commit?.committer?.date || null, url: commit.html_url || `https://github.com/${repo}/commit/${commit.sha}` };
 }
