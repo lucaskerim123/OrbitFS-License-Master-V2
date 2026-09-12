@@ -1,10 +1,23 @@
 import { readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-/** Canonical /admin entry. Keep this function self-contained for Vercel. */
+/** Canonical /admin entry. The complete admin UI lives in web/admin.html. */
 export default function admin(_req: IncomingMessage, res: ServerResponse) {
   try {
-    const html = readFileSync(new URL("../web/admin-control.html", import.meta.url), "utf8");
+    let html = readFileSync(new URL("../web/admin.html", import.meta.url), "utf8");
+    html = html.replace("</body>", `<script>
+/* Runtime correction for release-source discovery: private repos are read server-side with GITHUB_TOKEN. */
+window.loadReleaseSources=async function(){
+  try{
+    const get=async kind=>{const r=await fetch('/api/admin-extended?action=releaseSource',{headers:{authorization:'Bearer '+token,'x-release-kind':kind}});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Unable to read release source');return d.source};
+    releaseSources.base=await get('base');
+    releaseSources.update=await get('update');
+    renderReleaseSources();
+  }catch(e){
+    ['baseSource','updateSource'].forEach(id=>{if($(id))$(id).innerHTML='<b>Release source unavailable</b><span>'+esc(e.message)+'</span>';});
+  }
+};
+</script></body>`);
     res.statusCode = 200;
     res.setHeader("content-type", "text/html; charset=utf-8");
     res.setHeader("cache-control", "no-store, max-age=0");
