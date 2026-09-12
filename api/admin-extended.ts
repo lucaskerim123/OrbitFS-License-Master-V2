@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 const SUPABASE_URL = String(process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
 const MASTER = process.env.MASTER_API_TOKEN || "";
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "";
 const adminEmails = new Set((process.env.ADMIN_EMAILS || "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean));
 
 async function isAdmin(req: IncomingMessage) {
@@ -18,6 +19,34 @@ async function isAdmin(req: IncomingMessage) {
   return adminEmails.has(String(user.email || "").toLowerCase()) || metadata.role === "admin";
 }
 
+async function githubSource(repo: string, branch: string) {
+  if (!GITHUB_TOKEN) throw new Error("GITHUB_TOKEN is not configured for private release source access");
+  const response = await fetch(`https://api.github.com/repos/${repo}/commits?sha=${encodeURIComponent(branch)}&per_page=1`, {
+    headers: {
+      accept: "application/vnd.github+json",
+      authorization: `Bearer ${GITHUB_TOKEN}`,
+      "x-github-api-version": "2022-11-28",
+      "user-agent": "OrbitFS-License-Master-V2",
+    },
+  });
+  const data = await response.json().catch(() => []);
+  if (!response.ok) {
+    const message = data && typeof data === "object" ? String(data.message || "GitHub source lookup failed") : "GitHub source lookup failed";
+    throw new Error(message);
+  }
+  const commit = Array.isArray(data) ? data[0] : null;
+  if (!commit?.sha) throw new Error(`No commits found for ${repo} / ${branch}`);
+  return {
+    repo,
+    branch,
+    sha: String(commit.sha),
+    shortSha: String(commit.sha).slice(0, 12),
+    message: String(commit.commit?.message || "").split("\n")[0] || "No commit message",
+    date: commit.commit?.author?.date || commit.commit?.committer?.date || null,
+    url: commit.html_url || `https://github.com/${repo}/commit/${commit.sha}`,
+  };
+}
+
 export default async function adminExtended(req: IncomingMessage, res: ServerResponse) {
   if (req.method === "OPTIONS") { res.statusCode = 204; return res.end(); }
   if (!(await isAdmin(req))) { res.statusCode = 401; res.setHeader("content-type", "application/json"); return res.end(JSON.stringify({ error: "Administrator authentication is required" })); }
@@ -26,6 +55,24 @@ export default async function adminExtended(req: IncomingMessage, res: ServerRes
   const url = new URL(req.url || "/", "http://localhost");
   const action = url.searchParams.get("action") || "";
   const id = url.searchParams.get("id") || "";
+
+  if (action === "releaseSource") {
+    try {
+      const kind = url.searchParams.get("kind") === "base" ? "base" : "update";
+      const source = kind === "base"
+        ? await githubSource("lucaskerim123/V1-vercel-base", "release-updates")
+        : await githubSource("lucaskerim123/V1-vercel-engine", "release-updates");
+      res.statusCode = 200;
+      res.setHeader("content-type", "application/json; charset=utf-8");
+      res.setHeader("cache-control", "no-store");
+      return res.end(JSON.stringify({ source }));
+    } catch (error) {
+      res.statusCode = 502;
+      res.setHeader("content-type", "application/json; charset=utf-8");
+      return res.end(JSON.stringify({ error: error instanceof Error ? error.message : "Unable to read release source" }));
+    }
+  }
+
   const map: Record<string,string> = {
     releases: "/api/v1/releases",
     releaseCreate: "/api/v1/releases",
@@ -55,5 +102,3 @@ export default async function adminExtended(req: IncomingMessage, res: ServerRes
     if (oldAuth === undefined) delete req.headers.authorization; else req.headers.authorization = oldAuth;
   }
 }
-
-// Product API build integration is applied by tools/apply-product-api-patch.mjs.
