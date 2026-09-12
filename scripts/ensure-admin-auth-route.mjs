@@ -36,7 +36,7 @@ const functionCode = [
   "  }",
   "};",
   "",
-].join("\\n");
+].join("\n");
 
 if (!source.includes("const adminLogin = async (req: IncomingMessage, res: ServerResponse) => {")) {
   if (!source.includes(functionMarker)) throw new Error("server.ts auth insertion marker not found");
@@ -44,7 +44,7 @@ if (!source.includes("const adminLogin = async (req: IncomingMessage, res: Serve
 }
 
 const routeMarker = "    if (path === \"/api/admin/me\" && req.method === \"GET\") {";
-const routeCode = "    if ((path === \"/api/auth/login\" || path === \"/api/admin/control-login\") && req.method === \"POST\") return adminLogin(req, res);\\n";
+const routeCode = "    if ((path === \"/api/auth/login\" || path === \"/api/admin/control-login\") && req.method === \"POST\") return adminLogin(req, res);\n";
 if (!source.includes(routeCode)) {
   if (!source.includes(routeMarker)) throw new Error("server.ts route insertion marker not found");
   source = source.replace(routeMarker, routeCode + routeMarker);
