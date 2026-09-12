@@ -6,10 +6,9 @@ export default async function api(req: IncomingMessage, res: ServerResponse) {
   try {
     const pathname = String(req.url || "").split("?")[0];
 
-    // Vercel's catch-all function is the reliable production entry for /admin.
-    // Serve the HTML directly here instead of dynamically importing another
-    // function module, which can be omitted from an individual Vercel bundle.
-    if (pathname === "/admin" || pathname === "/admin/") {
+    // Vercel's /admin rewrite can arrive here as /api/admin. Handle both
+    // forms so the public custom domain never falls through to the API 404.
+    if (pathname === "/admin" || pathname === "/admin/" || pathname === "/api/admin" || pathname === "/api/admin/") {
       const html = readFileSync(new URL("../web/admin-control.html", import.meta.url), "utf8");
       res.statusCode = 200;
       res.setHeader("content-type", "text/html; charset=utf-8");
