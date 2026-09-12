@@ -50,5 +50,47 @@ if (!source.includes(routeCode)) {
   source = source.replace(routeMarker, routeCode + routeMarker);
 }
 
+// Vercel functions run on short-lived IPv4 infrastructure. Supabase recommends
+// the shared Supavisor transaction pooler (port 6543) for serverless traffic.
+// Older deployments may still have DATABASE_URL pointing at db.<ref>.supabase.co,
+// which can be unreachable from Vercel. Preserve the existing password while
+// translating that direct endpoint to the project's pooler endpoint.
+const normalizeDatabaseUrl = (value) => {
+  const raw = String(value || "").replace(/[?&]sslmode=[^&]+/i, "");
+  if (!raw) return raw;
+  try {
+    const url = new URL(raw);
+    const match = url.hostname.match(/^db\.([a-z0-9]+)\.supabase\.co$/i);
+    if (!match) return raw;
+    const projectRef = match[1];
+    const region = String(process.env.SUPABASE_DB_REGION || "us-west-2").trim();
+    const poolerHost = String(process.env.SUPABASE_POOLER_HOST || `aws-0-${region}.pooler.supabase.com`).trim();
+    url.hostname = poolerHost;
+    url.port = "6543";
+    if (url.username === "postgres") url.username = `postgres.${projectRef}`;
+    return url.toString();
+  } catch {
+    return raw;
+  }
+};
+
+const patchDatabaseSource = (path) => {
+  let value = readFileSync(path, "utf8");
+  const oldServer = 'const databaseUrl = String(process.env.DATABASE_URL || "").replace(/[?&]sslmode=[^&]+/i, "");';
+  const newServer = 'const databaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL || "");';
+  if (value.includes(oldServer)) value = value.replace(oldServer, newServer);
+  const oldProducts = 'const db = process.env.DATABASE_URL ? new Pool({ connectionString: String(process.env.DATABASE_URL).replace(/[?&]sslmode=[^&]+/i, ""), max: 5, ssl: { rejectUnauthorized: false } }) : null;';
+  const newProducts = 'const databaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL || "");\nconst db = databaseUrl ? new Pool({ connectionString: databaseUrl, max: 5, ssl: { rejectUnauthorized: false } }) : null;';
+  if (value.includes(oldProducts)) value = value.replace(oldProducts, newProducts);
+  if (path === "src/server.ts" && !value.includes("const normalizeDatabaseUrl = (value) =>")) {
+    value = value.replace('const databaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL || "");', 'const normalizeDatabaseUrl = (value) => {\n  const raw = String(value || "").replace(/[?&]sslmode=[^&]+/i, "");\n  if (!raw) return raw;\n  try {\n    const url = new URL(raw);\n    const match = url.hostname.match(/^db\\.([a-z0-9]+)\\.supabase\\.co$/i);\n    if (!match) return raw;\n    const projectRef = match[1];\n    const region = String(process.env.SUPABASE_DB_REGION || "us-west-2").trim();\n    const poolerHost = String(process.env.SUPABASE_POOLER_HOST || `aws-0-${region}.pooler.supabase.com`).trim();\n    url.hostname = poolerHost;\n    url.port = "6543";\n    if (url.username === "postgres") url.username = `postgres.${projectRef}`;\n    return url.toString();\n  } catch {\n    return raw;\n  }\n};\n\nconst databaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL || "");');
+  }
+  writeFileSync(path, value);
+};
+
+// Keep both the main server and standalone product endpoint on the same DB transport.
+patchDatabaseSource("src/server.ts");
+patchDatabaseSource("api/products.ts");
+
 writeFileSync(file, source);
-console.log("Admin authentication route ensured in src/server.ts");
+console.log("Admin authentication route and Supabase serverless DB transport ensured");
