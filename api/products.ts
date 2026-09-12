@@ -8,7 +8,7 @@ const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
 const adminEmails = new Set((process.env.ADMIN_EMAILS || "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean));
 const CORS = process.env.CORS_ORIGINS || "https://incendiarynetworks.cc,https://www.incendiarynetworks.cc";
 
-type Json = Record<string, any>;
+type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 const send = (res: ServerResponse, status: number, data: unknown) => {
   res.statusCode = status;
   res.setHeader("content-type", "application/json; charset=utf-8");
@@ -106,7 +106,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       return result.rowCount ? send(res, 200, { ok: true, archived: true }) : send(res, 404, { error: "Product not found" });
     }
     return send(res, 405, { error: "Method not allowed" });
-  } catch (e: any) {
-    return send(res, 400, { error: String(e?.message || "Product operation failed") });
+  } catch (e: unknown) {
+    if (e instanceof Error && e.message) {
+      return send(res, 400, { error: e.message });
+    }
+    return send(res, 400, { error: "Product operation failed" });
   }
 }

@@ -572,7 +572,7 @@ async function executeDeployment(req: IncomingMessage, res: ServerResponse) {
       if (!response.ok) throw new Error(`Vercel API ${response.status}`);
       return response.status === 204 ? null : response.json();
     };
-    let project: any = projectId ? { id: projectId, name: projectName } : null;
+    let project: { id: string; name: string } | null = projectId ? { id: projectId, name: projectName } : null;
     if (!project) project = await vapi("/v11/projects", { method: "POST", body: JSON.stringify({ name: projectName, framework: "sveltekit" }) });
     await query("update deployment_jobs set progress=25,message='Configuring Vercel project',updated_at=now() where id=$1", [job.id]);
     const env = input.env && typeof input.env === "object" && !Array.isArray(input.env) ? input.env as JsonObject : {};
