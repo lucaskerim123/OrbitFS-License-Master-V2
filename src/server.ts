@@ -338,22 +338,22 @@ async function validate(req: IncomingMessage, res: ServerResponse) {
       }
       const components = binding.components && typeof binding.components === "object" ? binding.components as JsonObject : {};
       const enabled = components[component] === true || (component === "orbitfs_base" && Object.keys(components).length === 0);
-      let installation = (await (client || db!).query(
+      let installation = (await (client ?? db)?.query(
         "select * from license_installations where binding_id=$1 and component_key=$2 and installation_id=$3 limit 1",
         [binding.id, component, installationId],
-      )).rows[0] as JsonObject | undefined;
+      ))?.rows[0] as JsonObject | undefined;
       if (state === "active" && enabled && input.activate === true && !installation) {
         // Serialize activation per license so concurrent requests cannot exceed the limit.
         if (client) await client.query("select pg_advisory_xact_lock(hashtext($1))", [String(binding.id)]);
-        const count = Number((await (client || db!).query(
+        const count = Number((await (client ?? db)?.query(
           "select count(distinct installation_id)::int as count from license_installations where binding_id=$1 and status='active'",
           [binding.id],
-        )).rows[0]?.count || 0);
+        ))?.rows[0]?.count || 0);
         if (count >= Number(binding.max_installations || 1)) {
           if (client) await client.query("rollback");
           return json(res, 409, { error: "Installation limit reached", code: "INSTALLATION_LIMIT" });
         }
-        await (client || db!).query(
+        await (client ?? db)?.query(
           `insert into license_installations
             (id,binding_id,component_key,installation_id,device_name,platform,app_version,status,registered_at,last_seen_at,locked_at,metadata)
            values($1,$2,$3,$4,$5,$6,$7,'active',now(),now(),now(),$8)
@@ -362,12 +362,12 @@ async function validate(req: IncomingMessage, res: ServerResponse) {
                  platform=excluded.platform,app_version=excluded.app_version,metadata=excluded.metadata`,
           [randomUUID(), binding.id, component, installationId, input.deviceName || null, input.platform || null, input.appVersion || null, input.metadata || {}],
         );
-        installation = (await (client || db!).query(
+        installation = (await (client ?? db)?.query(
           "select * from license_installations where binding_id=$1 and component_key=$2 and installation_id=$3 limit 1",
           [binding.id, component, installationId],
-        )).rows[0] as JsonObject;
+        ))?.rows[0] as JsonObject;
       } else if (installation) {
-        await (client || db!).query("update license_installations set last_seen_at=now() where id=$1", [installation.id]);
+        await (client ?? db)?.query("update license_installations set last_seen_at=now() where id=$1", [installation.id]);
       }
       const allowedComponent = state === "active" && enabled && !!installation && installation.status === "active";
       result[requestedName] = {
@@ -385,7 +385,7 @@ async function validate(req: IncomingMessage, res: ServerResponse) {
     client?.release();
   }
 
-  const settings = (await query<JsonObject>("select * from master_license_settings where id='primary'")).rows[0] || {};
+  const settings = (await query<JsonObject>("select * from master_license_settings where id='primary'"))?.rows[0] || {};
   const iat = Math.floor(Date.now() / 1000);
   const ttl = Number(settings.entitlement_ttl_seconds || 10800);
   const grace = Number(settings.grace_seconds || 604800);
