@@ -37,6 +37,7 @@ export default async function adminExtended(req: IncomingMessage, res: ServerRes
     installations: "/api/v1/installations",
     products: "/api/v1/products",
     settings: "/api/v1/settings",
+    licenseIssue: "/api/v1/license/issue",
     executeDeployment: "/api/v1/deployments/execute",
     syncDeployment: "/api/v1/deployments/sync",
   };
