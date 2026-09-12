@@ -1,221 +1,74 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { Pool } from "pg";
 
+const DATABASE_URL = String(process.env.DATABASE_URL || "").replace(/[?&]sslmode=[^&]+/i, "");
+const db = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, max: 3, ssl: { rejectUnauthorized: false } }) : null;
 const SUPABASE_URL = String(process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const MASTER = process.env.MASTER_API_TOKEN || "";
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "";
-const adminEmails = new Set((process.env.ADMIN_EMAILS || "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean));
+const BILLING = process.env.BILLING_API_TOKEN || "";
+const DEPLOYER = process.env.DEPLOYER_API_TOKEN || "";
+const ADMIN_EMAILS = new Set((process.env.ADMIN_EMAILS || "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean));
 
-const json = (res: ServerResponse, status: number, value: unknown) => {
-  res.statusCode = status;
-  res.setHeader("content-type", "application/json; charset=utf-8");
-  res.setHeader("cache-control", "no-store");
-  res.end(JSON.stringify(value));
-};
+const json = (res: ServerResponse, status: number, value: unknown) => { res.statusCode = status; res.setHeader("content-type", "application/json; charset=utf-8"); res.setHeader("cache-control", "no-store"); res.end(JSON.stringify(value)); };
+const bearer = (req: IncomingMessage) => String(req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
 
-const readBody = (req: IncomingMessage) => new Promise<Record<string, unknown>>((resolve, reject) => {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  req.on("data", (chunk: Buffer | string) => {
-    const b = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    size += b.length;
-    if (size > 1024 * 1024) { req.destroy(); reject(new Error("Request body is too large")); return; }
-    chunks.push(b);
-  });
-  req.on("end", () => {
-    if (!chunks.length) return resolve({});
-    try {
-      const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("object required");
-      resolve(value as Record<string, unknown>);
-    } catch { reject(new Error("Request body must be valid JSON")); }
-  });
-  req.on("error", reject);
-});
-
-async function isAdmin(req: IncomingMessage): Promise<boolean> {
-  const auth = String(req.headers.authorization || "");
-  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-  if (!token || !SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
-  const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SUPABASE_ANON_KEY, authorization: `Bearer ${token}` } });
-  if (!response.ok) return false;
-  const user = await response.json() as Record<string, unknown>;
-  const metadata = user.app_metadata && typeof user.app_metadata === "object" ? user.app_metadata as Record<string, unknown> : {};
-  return adminEmails.has(String(user.email).toLowerCase()) || metadata.role === "admin";
+async function isAdmin(req: IncomingMessage) {
+  const t = bearer(req);
+  if (!t) return false;
+  if (MASTER && t === MASTER) return true;
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
+  const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SUPABASE_ANON_KEY, authorization: `Bearer ${t}` } });
+  if (!r.ok) return false;
+  const u = await r.json() as { email?: string; app_metadata?: { role?: string } };
+  return ADMIN_EMAILS.has(String(u.email || "").toLowerCase()) || u.app_metadata?.role === "admin";
 }
 
-async function supabase(path: string, init: RequestInit = {}) {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not configured");
-  return fetch(`${SUPABASE_URL}${path}`, {
-    ...init,
-    headers: {
-      apikey: SUPABASE_SERVICE_ROLE_KEY,
-      authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-      "content-type": "application/json",
-      ...(init.headers || {}),
-    },
-  });
+async function ensureSettingsTable() {
+  if (!db) throw new Error("Database is not configured");
+  await db.query(`create table if not exists master_license_settings (id text primary key, issuer text not null default 'orbitfs-license-master', audience text not null default 'orbitfs-runtime', entitlement_ttl_seconds integer not null default 10800, grace_seconds integer not null default 604800, revision bigint not null default 1, updated_at timestamptz not null default now()); alter table master_license_settings add column if not exists api_mode text not null default 'online'; alter table master_license_settings add column if not exists allow_offline_grace boolean not null default true; insert into master_license_settings(id) values ('primary') on conflict (id) do nothing;`);
 }
 
-async function supabaseJson<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await supabase(path, { headers: { accept: "application/json", ...(init.headers || {}) }, ...init });
-  const data: unknown = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    let errorMessage: string;
-    if (typeof data === 'object' && data !== null) {
-      const errObj = data as { message?: unknown; hint?: unknown; error?: unknown };
-      errorMessage = String(errObj.message ?? errObj.hint ?? errObj.error ?? `Supabase request failed (${response.status})`);
-    } else {
-      errorMessage = `Supabase request failed (${response.status})`;
-    }
-    throw new Error(errorMessage);
-  }
-  return data as T;
-}
-  if (!commit?.sha) throw new Error(`No commits found for ${repo} / ${branch}`);
-  return { repo, branch, sha: String(commit.sha), shortSha: String(commit.sha).slice(0, 12), message: String(commit.commit?.message || "").split("\n")[0] || "No commit message", date: commit.commit?.author?.date || commit.commit?.committer?.date || null, url: commit.html_url || `https://github.com/${repo}/commit/${commit.sha}` };
+async function settings(req: IncomingMessage) {
+  await ensureSettingsTable();
+  if (req.method === "GET") return (await db!.query("select id,issuer,audience,entitlement_ttl_seconds,grace_seconds,api_mode,allow_offline_grace,revision,updated_at from master_license_settings where id='primary'")).rows[0];
+  const chunks: Buffer[] = []; for await (const c of req) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
+  const input = chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown> : {};
+  const current = (await db!.query("select * from master_license_settings where id='primary'")).rows[0] || {};
+  const mode = String(input.api_mode ?? input.mode ?? current.api_mode ?? "online").toLowerCase();
+  if (!["online", "offline", "maintenance"].includes(mode)) throw new Error("api_mode must be online, offline, or maintenance");
+  return (await db!.query(`update master_license_settings set issuer=$1,audience=$2,entitlement_ttl_seconds=$3,grace_seconds=$4,api_mode=$5,allow_offline_grace=$6,revision=$7,updated_at=now() where id='primary' returning id,issuer,audience,entitlement_ttl_seconds,grace_seconds,api_mode,allow_offline_grace,revision,updated_at`, [String(input.issuer ?? current.issuer ?? "orbitfs-license-master"), String(input.audience ?? current.audience ?? "orbitfs-runtime"), Math.max(60, Math.floor(Number(input.entitlement_ttl_seconds ?? current.entitlement_ttl_seconds ?? 10800))), Math.max(0, Math.floor(Number(input.grace_seconds ?? current.grace_seconds ?? 604800))), mode, input.allow_offline_grace === undefined ? current.allow_offline_grace !== false : Boolean(input.allow_offline_grace), Math.max(1, Math.floor(Number(input.revision ?? Number(current.revision || 0) + 1)))])).rows[0];
 }
 
-async function productAction(req: IncomingMessage, res: ServerResponse) {
-  const url = new URL(req.url || "/", "http://localhost");
-  const id = url.searchParams.get("id") || "";
-  try {
-    if (req.method === "GET") {
-      const rows = await supabaseJson("/rest/v1/license_products?select=*&order=sort_order.asc,name.asc");
-      return json(res, 200, { products: Array.isArray(rows) ? rows : [] });
-    }
-    if (req.method === "POST") {
-      const input = await readBody(req);
-      const code = String(input.code || "").trim().toLowerCase();
-      const name = String(input.name || "").trim();
-      if (!/^[a-z0-9][a-z0-9_.-]{1,79}$/.test(code)) return json(res, 400, { error: "Product code must use lowercase letters, numbers, dots, underscores or hyphens." });
-      if (!name) return json(res, 400, { error: "Product name is required" });
-      const slug = String(input.slug || code).trim().toLowerCase();
-      const payload = {
-        id: String(input.id || `prod_${code}`), code, name, slug,
-        description: String(input.description || ""), short_description: String(input.short_description || ""),
-        product_type: String(input.product_type || "component"), active: input.active !== false,
-        purchasable: input.purchasable !== false, public: input.public !== false,
-        component_key: input.component_key ? String(input.component_key) : null, runtime: String(input.runtime || "engine"),
-        requires_engine: input.requires_engine === true, requires_base: input.requires_base !== false,
-        max_installations: Math.max(1, Math.min(100, Math.floor(Number(input.max_installations || 1)))),
-        duration_days: input.duration_days ? Number(input.duration_days) : null,
-        grace_seconds: input.grace_seconds ? Number(input.grace_seconds) : null,
-        version_policy: String(input.version_policy || "latest"), release_channel: String(input.release_channel || "stable"),
-        price_amount: Number(input.price_amount || 0), price_currency: String(input.price_currency || "AUD"),
-        billing_interval: String(input.billing_interval || "one_time"), stripe_price_id: input.stripe_price_id || null,
-        stripe_product_id: input.stripe_product_id || null, paypal_product_id: input.paypal_product_id || null,
-        features: Array.isArray(input.features) ? input.features : [], metadata: input.metadata && typeof input.metadata === "object" ? input.metadata : {},
-        entitlement_defaults: input.entitlement_defaults && typeof input.entitlement_defaults === "object" ? input.entitlement_defaults : {},
-        display: input.display && typeof input.display === "object" ? input.display : {}, sort_order: Number(input.sort_order || 0), updated_at: new Date().toISOString(),
-      };
-      const rows = await supabaseJson("/rest/v1/license_products?on_conflict=code", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=representation" }, body: JSON.stringify(payload) });
-      return json(res, 201, { product: Array.isArray(rows) ? rows[0] : rows });
-    }
-    if (req.method === "PATCH") {
-      if (!id) return json(res, 400, { error: "Product id is required" });
-      const input = await readBody(req);
-      const allowed = ["name","slug","description","short_description","product_type","active","purchasable","public","component_key","runtime","requires_engine","requires_base","max_installations","duration_days","grace_seconds","version_policy","release_channel","price_amount","price_currency","billing_interval","stripe_price_id","stripe_product_id","paypal_product_id","features","metadata","entitlement_defaults","display","sort_order"];
-      const payload: Record<string, unknown> = {};
-      for (const key of allowed) if (key in input) payload[key] = input[key];
-      payload.updated_at = new Date().toISOString();
-      const rows = await supabaseJson(`/rest/v1/license_products?id=eq.${encodeURIComponent(id)}`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(payload) });
-      if (!Array.isArray(rows) || !rows[0]) return json(res, 404, { error: "Product not found" });
-      return json(res, 200, { product: rows[0] });
-    }
-    if (req.method === "DELETE") {
-      if (!id) return json(res, 400, { error: "Product id is required" });
-      await supabaseJson(`/rest/v1/license_products?id=eq.${encodeURIComponent(id)}`, { method: "DELETE" });
-      return json(res, 200, { ok: true });
-    }
-    return json(res, 405, { error: "Method not allowed" });
-  } catch (error) {
-    return json(res, 502, { error: error instanceof Error ? error.message : "Product catalogue operation failed" });
-  }
-}
-
-async function settingsAction(req: IncomingMessage, res: ServerResponse) {
-  try {
-    if (req.method === "GET") {
-      let rows = await supabaseJson("/rest/v1/master_license_settings?id=eq.primary&select=*");
-      if (!Array.isArray(rows) || !rows[0]) {
-        rows = await supabaseJson("/rest/v1/master_license_settings?select=*&limit=1");
-      }
-      const settings = Array.isArray(rows) && rows[0] ? rows[0] : {
-        id: "primary", enabled: true, mode: "active", issuer: "orbitfs-license-master", audience: "orbitfs-runtime",
-        entitlement_ttl_seconds: 10800, grace_seconds: 604800, allow_offline_grace: true, revision: 1,
-      };
-      return json(res, 200, { settings, database: true, settings_found: Boolean(Array.isArray(rows) && rows[0]) });
-    }
-    if (req.method === "PATCH" || req.method === "POST") {
-      const input = await readBody(req);
-      const existingRows = await supabaseJson("/rest/v1/master_license_settings?id=eq.primary&select=*");
-      const existing = Array.isArray(existingRows) ? existingRows[0] || {} : {};
-      const mode = String(input.mode ?? existing.mode ?? "active").toLowerCase();
-      const enabled = input.enabled === undefined ? existing.enabled !== false : Boolean(input.enabled);
-      if (!["active", "offline", "maintenance"].includes(mode)) return json(res, 400, { error: "mode must be active, offline, or maintenance" });
-      const payload = {
-        id: "primary",
-        enabled,
-        mode,
-        issuer: String(input.issuer ?? existing.issuer ?? "orbitfs-license-master"),
-        audience: String(input.audience ?? existing.audience ?? "orbitfs-runtime"),
-        entitlement_ttl_seconds: Math.max(60, Math.floor(Number(input.entitlement_ttl_seconds ?? existing.entitlement_ttl_seconds ?? 10800))),
-        grace_seconds: Math.max(0, Math.floor(Number(input.grace_seconds ?? existing.grace_seconds ?? 604800))),
-        allow_offline_grace: input.allow_offline_grace === undefined ? existing.allow_offline_grace !== false : Boolean(input.allow_offline_grace),
-        revision: Number(existing.revision || 0) + 1,
-        updated_at: new Date().toISOString(),
-      };
-      const rows = await supabaseJson("/rest/v1/master_license_settings?on_conflict=id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=representation" }, body: JSON.stringify(payload) });
-      return json(res, 200, { settings: Array.isArray(rows) ? rows[0] : rows, database: true });
-    }
-    return json(res, 405, { error: "Method not allowed" });
-  } catch (error) {
-    return json(res, 502, { error: error instanceof Error ? error.message : "License Master settings operation failed" });
-  }
-}
-
-async function healthAction(_req: IncomingMessage, res: ServerResponse) {
-  try {
-    const rows = await supabaseJson("/rest/v1/master_license_settings?id=eq.primary&select=id,enabled,mode,revision");
-    return json(res, 200, { ok: true, database: true, settings: Array.isArray(rows) && rows.length > 0, api: "License Master V2" });
-  } catch (error) {
-    return json(res, 503, { ok: false, database: false, api: "License Master V2", error: error instanceof Error ? error.message : "Database health check failed" });
-  }
-}
-
-export default async function adminExtended(req: IncomingMessage, res: ServerResponse) {
-  if (req.method === "OPTIONS") { res.statusCode = 204; return res.end(); }
-  if (!(await isAdmin(req))) return json(res, 401, { error: "Administrator authentication is required" });
+async function proxy(req: IncomingMessage, res: ServerResponse, target: string) {
   if (!MASTER) return json(res, 503, { error: "MASTER_API_TOKEN is not configured" });
-
-  const url = new URL(req.url || "/", "http://localhost");
-  const action = url.searchParams.get("action") || "";
-  const id = url.searchParams.get("id") || "";
-
-  if (action === "releaseSource") {
-    try {
-      const requestedKind = String(req.headers["x-release-kind"] || url.searchParams.get("kind") || "update").toLowerCase();
-      const kind = requestedKind === "base" ? "base" : "update";
-      const source = kind === "base" ? await githubSource("lucaskerim123/V1-vercel-base", "base-release") : await githubSource("lucaskerim123/V1-vercel-engine", "release-updates");
-      return json(res, 200, { source });
-    } catch (error) {
-      return json(res, 502, { error: error instanceof Error ? error.message : "Unable to read release source" });
-    }
-  }
-
-  if (action === "products") return productAction(req, res);
-  if (action === "settings") return settingsAction(req, res);
-  if (action === "health") return healthAction(req, res);
-
-  const map: Record<string, string> = {
-    releases: "/api/v1/releases", releaseCreate: "/api/v1/releases", releasePublish: `/api/v1/releases/${encodeURIComponent(id)}/publish`, releaseValidate: `/api/v1/releases/${encodeURIComponent(id)}/validate`, releasePause: `/api/v1/releases/${encodeURIComponent(id)}/pause`, releaseWithdraw: `/api/v1/releases/${encodeURIComponent(id)}/withdraw`, deployments: "/api/v1/deployments", installations: "/api/v1/installations", licenseIssue: "/api/v1/license/issue", executeDeployment: "/api/v1/deployments/execute", syncDeployment: "/api/v1/deployments/sync",
-  };
-  const target = map[action];
-  if (!target) return json(res, 400, { error: "Unknown admin action" });
   const oldUrl = req.url; const oldAuth = req.headers.authorization;
   req.url = target; req.headers.authorization = `Bearer ${MASTER}`;
   try { const { handler } = await import("../src/server.js"); return handler(req, res); }
   finally { req.url = oldUrl; if (oldAuth === undefined) delete req.headers.authorization; else req.headers.authorization = oldAuth; }
+}
+
+export default async function handler(req: IncomingMessage, res: ServerResponse) {
+  if (req.method === "OPTIONS") { res.statusCode = 204; return res.end(); }
+  if (!(await isAdmin(req))) return json(res, 401, { error: "Administrator authentication is required" });
+  const url = new URL(req.url || "/", "http://localhost");
+  const action = url.searchParams.get("action") || "";
+  const id = url.searchParams.get("id") || "";
+  try {
+    if (action === "settings") { const s = await settings(req); return json(res, 200, { ok: true, settings: s, database: true, settings_found: true }); }
+    if (action === "health") { const s = await settings({ ...req, method: "GET" } as IncomingMessage); return json(res, 200, { ok: true, database: true, settings_found: Boolean(s), api: "License Master V2", services: { billing: Boolean(BILLING), deployer: Boolean(DEPLOYER) }, endpoints: { base: "/api", versioned: "/api/v1", billing: ["/api/v1/products", "/api/v1/license/issue", "/api/v1/license/validate", "/api/v1/releases"], deployer: ["/api/v1/releases", "/api/v1/installations", "/api/v1/deployments"] } }); }
+    if (action === "products") return proxy(req, res, "/api/v1/products");
+    if (action === "releases") return proxy(req, res, "/api/v1/releases");
+    if (action === "releaseCreate") return proxy(req, res, "/api/v1/releases");
+    if (action === "releasePublish") return proxy(req, res, `/api/v1/releases/${encodeURIComponent(id)}/publish`);
+    if (action === "releaseValidate") return proxy(req, res, `/api/v1/releases/${encodeURIComponent(id)}/validate`);
+    if (action === "releasePause") return proxy(req, res, `/api/v1/releases/${encodeURIComponent(id)}/pause`);
+    if (action === "releaseWithdraw") return proxy(req, res, `/api/v1/releases/${encodeURIComponent(id)}/withdraw`);
+    if (action === "deployments") return proxy(req, res, "/api/v1/deployments");
+    if (action === "installations") return proxy(req, res, "/api/v1/installations");
+    if (action === "licenseIssue") return proxy(req, res, "/api/v1/license/issue");
+    if (action === "executeDeployment") return proxy(req, res, "/api/v1/deployments/execute");
+    if (action === "syncDeployment") return proxy(req, res, "/api/v1/deployments/sync");
+    return json(res, 400, { error: "Unknown admin action" });
+  } catch (e) { return json(res, 503, { ok: false, database: false, settings_found: false, error: e instanceof Error ? e.message : "License Master API operation failed" }); }
 }
