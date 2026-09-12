@@ -4,6 +4,10 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 export default async function api(req: IncomingMessage, res: ServerResponse) {
   try {
     const pathname = String(req.url || "").split("?")[0];
+    if (pathname === "/admin" || pathname === "/admin/") {
+      const { default: adminControlUi } = await import("./admin-control-ui.js");
+      return adminControlUi(req, res);
+    }
     if (pathname === "/api/products") {
       const { default: products } = await import("./products.js");
       return products(req, res);
@@ -16,7 +20,7 @@ export default async function api(req: IncomingMessage, res: ServerResponse) {
       const { default: adminControlUi } = await import("./admin-control-ui.js");
       return adminControlUi(req, res);
     }
-    if (pathname === "/api/admin-control-login") {
+    if (pathname === "/api/admin-control-login" || pathname === "/api/auth/login") {
       const { default: adminControlLogin } = await import("./admin-control-login.js");
       return adminControlLogin(req, res);
     }
