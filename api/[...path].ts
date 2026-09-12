@@ -12,6 +12,14 @@ export default async function api(req: IncomingMessage, res: ServerResponse) {
       const { default: productsUi } = await import("./admin-products-ui.js");
       return productsUi(req, res);
     }
+    if (pathname === "/api/admin-control-ui") {
+      const { default: adminControlUi } = await import("./admin-control-ui.js");
+      return adminControlUi(req, res);
+    }
+    if (pathname === "/api/admin-control-login") {
+      const { default: adminControlLogin } = await import("./admin-control-login.js");
+      return adminControlLogin(req, res);
+    }
     const { handler } = await import("../src/server.js");
     return handler(req, res);
   } catch (error) {
