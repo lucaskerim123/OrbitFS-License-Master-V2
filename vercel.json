@@ -9,7 +9,8 @@
     "api/products.ts": { "maxDuration": 10 },
     "api/admin-products-ui.ts": { "maxDuration": 10 },
     "api/admin-control-ui.ts": { "maxDuration": 10, "includeFiles": "web/admin-control.html" },
-    "api/admin-control-login.ts": { "maxDuration": 10 }
+    "api/admin-control-login.ts": { "maxDuration": 10 },
+    "api/auth/login.ts": { "maxDuration": 10 }
   },
   "rewrites": [
     { "source": "/admin/products", "destination": "/api/admin-products-ui" },
