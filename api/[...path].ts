@@ -3,6 +3,15 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 export default async function api(req: IncomingMessage, res: ServerResponse) {
   try {
+    const pathname = String(req.url || "").split("?")[0];
+    if (pathname === "/api/products") {
+      const { default: products } = await import("./products.js");
+      return products(req, res);
+    }
+    if (pathname === "/api/admin-products-ui") {
+      const { default: productsUi } = await import("./admin-products-ui.js");
+      return productsUi(req, res);
+    }
     const { handler } = await import("../src/server.js");
     return handler(req, res);
   } catch (error) {
