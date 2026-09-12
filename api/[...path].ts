@@ -4,11 +4,15 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 export default async function api(req: IncomingMessage, res: ServerResponse) {
   try {
-    const pathname = String(req.url || "").split("?")[0];
+    const rawPath = String(req.url || "/").split("?")[0];
+    // Vercel's catch-all function can receive the path with or without the
+    // /api prefix depending on how the function is invoked. Normalize it
+    // once so every License Master route sees the canonical /api/... path.
+    const pathname = rawPath === "/api" || rawPath === "/api/"
+      ? "/api"
+      : rawPath.startsWith("/api/") ? rawPath : `/api${rawPath.startsWith("/") ? rawPath : `/${rawPath}`}`;
 
-    // Vercel's /admin rewrite can arrive here as /api/admin. Handle both
-    // forms so the public custom domain never falls through to the API 404.
-    if (pathname === "/admin" || pathname === "/admin/" || pathname === "/api/admin" || pathname === "/api/admin/") {
+    if (pathname === "/api/admin" || pathname === "/api/admin/") {
       const html = readFileSync(new URL("../web/admin-control.html", import.meta.url), "utf8");
       res.statusCode = 200;
       res.setHeader("content-type", "text/html; charset=utf-8");
@@ -32,6 +36,7 @@ export default async function api(req: IncomingMessage, res: ServerResponse) {
       const { default: adminControlLogin } = await import("./admin-control-login.js");
       return adminControlLogin(req, res);
     }
+
     const { handler } = await import("../src/server.js");
     return handler(req, res);
   } catch (error) {
