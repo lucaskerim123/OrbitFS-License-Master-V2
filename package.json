@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/dev.ts",
-    "build": "node tools/apply-product-api-patch.mjs && tsc --noEmit",
+    "build": "tsc --noEmit",
     "start": "node dist/server.js",
-    "typecheck": "node tools/apply-product-api-patch.mjs && tsc --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": { "pg": "^8.23.0" },
   "devDependencies": { "@types/node": "^22", "@types/pg": "^8.15.5", "tsx": "^4.20.5", "typescript": "^5.9.2" }
