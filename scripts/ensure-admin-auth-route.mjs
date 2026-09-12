@@ -50,6 +50,9 @@ if (!source.includes(routeCode)) {
   source = source.replace(routeMarker, routeCode + routeMarker);
 }
 
+// Persist the auth-route changes first; the DB patch below then works on the current file.
+writeFileSync(file, source);
+
 // Vercel functions run on short-lived IPv4 infrastructure. Supabase recommends
 // the shared Supavisor transaction pooler (port 6543) for serverless traffic.
 // Older deployments may still have DATABASE_URL pointing at db.<ref>.supabase.co,
@@ -88,9 +91,6 @@ const patchDatabaseSource = (path) => {
   writeFileSync(path, value);
 };
 
-// Keep both the main server and standalone product endpoint on the same DB transport.
 patchDatabaseSource("src/server.ts");
 patchDatabaseSource("api/products.ts");
-
-writeFileSync(file, source);
 console.log("Admin authentication route and Supabase serverless DB transport ensured");
