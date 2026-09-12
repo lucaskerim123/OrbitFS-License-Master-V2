@@ -6,10 +6,10 @@ export default function admin(_req: IncomingMessage, res: ServerResponse) {
   try {
     let html = readFileSync(new URL("../web/admin.html", import.meta.url), "utf8");
     html = html.replace("</body>", `<script>
-/* Runtime correction for release-source discovery: private repos are read server-side with GITHUB_TOKEN. */
+/* Release-source correction: Base releases come from V1-vercel-base/release-updates; Engine updates come from V1-vercel-engine/release-updates. */
 window.loadReleaseSources=async function(){
   try{
-    const get=async kind=>{const r=await fetch('/api/admin-extended?action=releaseSource',{headers:{authorization:'Bearer '+token,'x-release-kind':kind}});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Unable to read release source');return d.source};
+    const get=async kind=>{const r=await fetch('/api/admin-extended?action=releaseSource&kind='+encodeURIComponent(kind),{headers:{authorization:'Bearer '+token,'x-release-kind':kind}});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Unable to read release source');return d.source};
     releaseSources.base=await get('base');
     releaseSources.update=await get('update');
     renderReleaseSources();
