@@ -8,14 +8,14 @@ alter table license_products add column if not exists updater_enabled boolean no
 alter table license_products add column if not exists runtime_config jsonb not null default '{}'::jsonb;
 
 create table if not exists installation_components (
-  id text primary key,
-  installation_id text not null references orbitfs_installations(id) on delete cascade,
+  id uuid primary key default gen_random_uuid(),
+  installation_id uuid not null references orbitfs_installations(id) on delete cascade,
   product_id text not null references license_products(id),
   version text,
   desired_version text,
   status text not null default 'inactive' check (status in ('inactive','installed','updating','failed','disabled')),
   config jsonb not null default '{}'::jsonb,
-  last_deployment_id text,
+  last_deployment_id uuid,
   installed_at timestamptz,
   updated_at timestamptz not null default now(),
   unique(installation_id, product_id)
@@ -23,12 +23,9 @@ create table if not exists installation_components (
 create index if not exists installation_components_installation_idx on installation_components(installation_id, status);
 
 alter table orbitfs_installations add column if not exists deployment_provider text not null default 'vercel';
-alter table orbitfs_installations add column if not exists supabase_project_ref text;
 alter table orbitfs_installations add column if not exists panel_version text;
 alter table orbitfs_installations add column if not exists engine_version text;
-alter table orbitfs_installations add column if not exists status text not null default 'provisioning';
-alter table orbitfs_installations add column if not exists health_status text not null default 'unknown';
-alter table orbitfs_installations add column if not exists last_health_check_at timestamptz;
+alter table orbitfs_installations add column if not exists deployment_status text not null default 'provisioning';
 alter table orbitfs_installations add column if not exists metadata_version integer not null default 1;
 
 alter table releases add column if not exists product_id text references license_products(id);
@@ -43,11 +40,8 @@ alter table deployment_jobs add column if not exists target_version text;
 alter table deployment_jobs add column if not exists previous_version text;
 alter table deployment_jobs add column if not exists preserve_data boolean not null default true;
 alter table deployment_jobs add column if not exists migration_required boolean not null default false;
-alter table deployment_jobs add column if not exists rollback_release_id text references releases(id);
+alter table deployment_jobs add column if not exists rollback_release_id uuid references releases(id);
 alter table deployment_jobs add column if not exists provider_deployment_id text;
 
 create index if not exists releases_product_idx on releases(product_id, status, channel, created_at desc);
 create index if not exists deployment_jobs_provider_idx on deployment_jobs(provider, provider_project_id, created_at desc);
-
--- Normal updates preserve the customer's existing application/database state.
-update deployment_jobs set preserve_data=true where preserve_data is null;
