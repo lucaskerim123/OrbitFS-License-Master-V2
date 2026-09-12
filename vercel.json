@@ -7,7 +7,8 @@
     "api/[...path].ts": { "maxDuration": 10, "includeFiles": "web/admin.html" },
     "api/products.ts": { "maxDuration": 10 },
     "api/admin-products-ui.ts": { "maxDuration": 10 },
-    "api/admin-control-ui.ts": { "maxDuration": 10, "includeFiles": "web/admin-control.html" }
+    "api/admin-control-ui.ts": { "maxDuration": 10, "includeFiles": "web/admin-control.html" },
+    "api/admin-control-login.ts": { "maxDuration": 10 }
   },
   "rewrites": [
     { "source": "/admin/products", "destination": "/api/admin-products-ui" },
@@ -15,6 +16,7 @@
     { "source": "/v1/products/:path*", "destination": "/api/products" },
     { "source": "/api/v1/products", "destination": "/api/products" },
     { "source": "/api/v1/products/:path*", "destination": "/api/products" },
-    { "source": "/admin", "destination": "/api/admin-control-ui" }
+    { "source": "/admin", "destination": "/api/admin-control-ui" },
+    { "source": "/api/admin/control-login", "destination": "/api/admin-control-login" }
   ]
 }
