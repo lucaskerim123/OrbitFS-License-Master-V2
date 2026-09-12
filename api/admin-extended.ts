@@ -41,7 +41,7 @@ export default async function adminExtended(req: IncomingMessage, res: ServerRes
     try {
       const requestedKind = String(req.headers["x-release-kind"] || url.searchParams.get("kind") || "update").toLowerCase();
       const kind = requestedKind === "base" ? "base" : "update";
-      const source = kind === "base" ? await githubSource("lucaskerim123/V1-vercel-base", "release-updates") : await githubSource("lucaskerim123/V1-vercel-engine", "release-updates");
+      const source = kind === "base" ? await githubSource("lucaskerim123/V1-vercel-base", "base-release") : await githubSource("lucaskerim123/V1-vercel-engine", "release-updates");
       res.statusCode = 200; res.setHeader("content-type", "application/json; charset=utf-8"); res.setHeader("cache-control", "no-store");
       return res.end(JSON.stringify({ source }));
     } catch (error) {
