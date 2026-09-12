@@ -50,10 +50,9 @@ if (!source.includes(routeCode)) {
   source = source.replace(routeMarker, routeCode + routeMarker);
 }
 
-// Accept the configured entitlement key whether Vercel contains raw PEM, base64 PEM,
-// or base64 DER. Node's crypto API supports PEM/DER private-key imports.
+// Accept raw PEM, PEM with escaped newlines, base64/base64url PEM, PKCS#8 DER, and PKCS#1 DER.
 const oldKey = 'const privatePem = () => PRIVATE_KEY ? Buffer.from(PRIVATE_KEY, "base64").toString("utf8") : "";';
-const newKey = 'const privatePem = () => {\n  const value = String(PRIVATE_KEY || "").trim().replace(/\\\\n/g, "\\n");\n  if (!value) return "";\n  if (value.includes("-----BEGIN")) return value;\n  try {\n    const decoded = Buffer.from(value, "base64");\n    const decodedText = decoded.toString("utf8");\n    if (decodedText.includes("-----BEGIN")) return decodedText;\n    for (const type of ["pkcs8", "pkcs1"]) {\n      try {\n        return createPrivateKey({ key: decoded, format: "der", type }).export({ type: "pkcs8", format: "pem" }).toString();\n      } catch {}\n    }\n  } catch {}\n  return "";\n};';
+const newKey = 'const privatePem = () => {\n  let value = String(PRIVATE_KEY || "").trim().replace(/^(["\\\'])|(["\\\'])$/g, "").replace(/\\\\n/g, "\\n");\n  if (!value) return "";\n  if (value.includes("-----BEGIN")) return value;\n  const candidates = [value, value.replace(/-/g, "+").replace(/_/g, "/")];\n  for (const candidate of candidates) {\n    try {\n      const decoded = Buffer.from(candidate, "base64");\n      if (!decoded.length) continue;\n      const decodedText = decoded.toString("utf8").trim();\n      if (decodedText.includes("-----BEGIN")) return decodedText.replace(/\\\\n/g, "\\n");\n      for (const type of ["pkcs8", "pkcs1"]) {\n        try {\n          return createPrivateKey({ key: decoded, format: "der", type }).export({ type: "pkcs8", format: "pem" }).toString();\n        } catch {}\n      }\n    } catch {}\n  }\n  return "";\n};';
 if (source.includes(oldKey)) source = source.replace(oldKey, newKey);
 
 writeFileSync(file, source);
