@@ -1,13 +1,22 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 export default async function api(req: IncomingMessage, res: ServerResponse) {
   try {
     const pathname = String(req.url || "").split("?")[0];
+
+    // Vercel's catch-all function is the reliable production entry for /admin.
+    // Serve the HTML directly here instead of dynamically importing another
+    // function module, which can be omitted from an individual Vercel bundle.
     if (pathname === "/admin" || pathname === "/admin/") {
-      const { default: adminControlUi } = await import("./admin-control-ui.js");
-      return adminControlUi(req, res);
+      const html = readFileSync(new URL("../web/admin-control.html", import.meta.url), "utf8");
+      res.statusCode = 200;
+      res.setHeader("content-type", "text/html; charset=utf-8");
+      res.setHeader("cache-control", "no-store, max-age=0");
+      return res.end(html);
     }
+
     if (pathname === "/api/products") {
       const { default: products } = await import("./products.js");
       return products(req, res);
