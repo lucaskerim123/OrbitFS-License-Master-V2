@@ -6,9 +6,9 @@ License Master is the authority for release metadata, version records, licence e
 
 Repository: `lucaskerim123/V1-vercel-base`
 
-Branch: `release-updates`
+Branch: `base-release`
 
-The Base/Panel deployment release source is the `release-updates` branch in the V1 Base repository. License Master captures the exact Base version/source commit used for a release and retains that source reference with the immutable release record. A later Base release can be compared against the previously captured source version/commit so the release record shows what changed.
+The Base/Panel deployment release source is the `base-release` branch in the V1 Base repository. License Master captures the exact Base version/source commit used for a release and retains that source reference with the immutable release record. A later Base release can be compared against the previously captured source version/commit so the release record shows what changed.
 
 ## Update release source
 
@@ -21,7 +21,7 @@ The Engine/add-on update release system uses the `release-updates` branch for ex
 ## Authority flow
 
 ```text
-V1-vercel-base / release-updates
+V1-vercel-base / base-release
         -> capture latest Base version + source commit
         -> compare later Base source changes
         -> immutable Base release record
