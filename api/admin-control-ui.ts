@@ -5,6 +5,27 @@ export default function adminControlUi(_req: IncomingMessage, res: ServerRespons
   let html = readFileSync(new URL("../web/admin-control.html", import.meta.url), "utf8");
   html = html.replace("</body>", `<script>
 (function(){
+  const rewrite=(v)=>typeof v==='string'?v.replaceAll('/api/v1/','/api/'):v;
+  const nativeFetch=window.fetch.bind(window);
+  window.fetch=function(input,init){
+    if(typeof input==='string') input=rewrite(input);
+    else if(input&&input.url) input=new Request(rewrite(input.url),input);
+    return nativeFetch(input,init);
+  };
+  const nativeCopy=window.copyText;
+  if(typeof nativeCopy==='function') window.copyText=(value)=>nativeCopy(rewrite(value));
+  const normalize=()=>{
+    document.querySelectorAll('*').forEach((el)=>{
+      if(el.childElementCount===0 && typeof el.textContent==='string' && el.textContent.includes('/api/v1/')) el.textContent=rewrite(el.textContent);
+      if('value' in el && typeof el.value==='string' && el.value.includes('/api/v1/')) el.value=rewrite(el.value);
+    });
+  };
+  normalize();
+  new MutationObserver(normalize).observe(document.documentElement,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['value']});
+})();
+</script>
+<script>
+(function(){
   const originalLoadSettings = window.loadSettings;
   window.loadSettings = async function(){
     const state=document.getElementById('settingsState');
