@@ -2,23 +2,19 @@ import { readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 /** Canonical /admin entry. The complete admin UI lives in web/admin.html. */
+const RELEASE_BASE_REPOSITORY = String(process.env.RELEASE_BASE_REPOSITORY || "").trim();
+const RELEASE_BASE_BRANCH = String(process.env.RELEASE_BASE_BRANCH || "").trim();
+const RELEASE_UPDATE_REPOSITORY = String(process.env.RELEASE_UPDATE_REPOSITORY || "").trim();
+const RELEASE_UPDATE_BRANCH = String(process.env.RELEASE_UPDATE_BRANCH || "").trim();
+
 export default function admin(_req: IncomingMessage, res: ServerResponse) {
   try {
     let html = readFileSync(new URL("../web/admin.html", import.meta.url), "utf8");
     html = html.replace("</body>", `<script>
 /* License Master control-plane corrections. */
-window.renderReleaseSources=function(){const b=releaseSources.base,u=releaseSources.update;if(b)$('baseSource').innerHTML='<b>Base deployment source</b><span>'+esc(b.repo||'lucaskerim123/V1-vercel-base')+' / '+esc(b.branch||'base-release')+' · '+esc(b.shortSha)+' · '+esc(b.message)+'</span>';if(u)$('updateSource').innerHTML='<b>Update release source</b><span>'+esc(u.repo||'lucaskerim123/V1-vercel-engine')+' / '+esc(u.branch||'release-updates')+' · '+esc(u.shortSha)+' · '+esc(u.message)+'</span>'};
-window.sourceBranch=function(mode){return mode==='base'?'base-release':'release-updates'};
-window.loadReleaseSources=async function(){
-  try{
-    const get=async kind=>{const r=await fetch('/api/admin-extended?action=releaseSource&kind='+encodeURIComponent(kind),{headers:{authorization:'Bearer '+token,'x-release-kind':kind}});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Unable to read release source');return d.source};
-    releaseSources.base=await get('base');
-    releaseSources.update=await get('update');
-    renderReleaseSources();
-  }catch(e){
-    ['baseSource','updateSource'].forEach(id=>{if($(id))$(id).innerHTML='<b>Release source unavailable</b><span>'+esc(e.message)+'</span>';});
-  }
-};
+window.renderReleaseSources=function(){if($("baseSource"))$("baseSource").innerHTML='<b>Base deployment source</b><span><a href="${RELEASE_BASE_REPOSITORY}/tree/${RELEASE_BASE_BRANCH}" target="_blank" rel="noreferrer">${RELEASE_BASE_REPOSITORY}/tree/${RELEASE_BASE_BRANCH}</a></span>';if($("updateSource"))$("updateSource").innerHTML='<b>Update release source</b><span><a href="${RELEASE_UPDATE_REPOSITORY}/tree/${RELEASE_UPDATE_BRANCH}" target="_blank" rel="noreferrer">${RELEASE_UPDATE_REPOSITORY}/tree/${RELEASE_UPDATE_BRANCH}</a></span>'};
+window.sourceBranch=function(mode){return mode==='base'?RELEASE_BASE_BRANCH:RELEASE_UPDATE_BRANCH};
+window.loadReleaseSources=async function(){releaseSources.base={repo:RELEASE_BASE_REPOSITORY,branch:RELEASE_BASE_BRANCH,url:`${RELEASE_BASE_REPOSITORY}/tree/${RELEASE_BASE_BRANCH}`};releaseSources.update={repo:RELEASE_UPDATE_REPOSITORY,branch:RELEASE_UPDATE_BRANCH,url:`${RELEASE_UPDATE_REPOSITORY}/tree/${RELEASE_UPDATE_BRANCH}`};renderReleaseSources();};
 
 async function lmProductRequest(method,id,body){
   const url='/api/admin-extended?action=products'+(id?'&id='+encodeURIComponent(id):'');
@@ -56,8 +52,8 @@ function lmMountManagers(){
     lmRefreshSettings();
   }catch(e){console.error(e)}
 }
-window.lmRefreshSettings=async function(){try{const d=await fetch('/api/admin-extended?action=settings',{headers:{authorization:'Bearer '+token}});const x=await d.json();if(!d.ok)throw Error(x.error||'Unable to load License Master settings');const s=x.settings||{};['lmIssuer','lmAudience','lmTtl','lmGrace'].forEach((id)=>{const e=document.getElementById(id);if(e)e.value=id==='lmIssuer'?s.issuer||'':id==='lmAudience'?s.audience||'':id==='lmTtl'?(s.entitlement_ttl_seconds||10800):(s.grace_seconds||604800)});const en=document.getElementById('lmEnabled');if(en)en.value=s.enabled===false?'false':'true';const mode=document.getElementById('lmMode');if(mode)mode.value=s.mode||'active';const og=document.getElementById('lmOfflineGrace');if(og)og.value=s.allow_offline_grace===false?'false':'true';const st=document.getElementById('lmSettingsStatus');if(st)st.textContent=(x.database?'Connected to License Master database. ':'Database unavailable. ')+(x.settings_found?'Settings loaded.':'Defaults loaded; settings row was not found.');}catch(e){const st=document.getElementById('lmSettingsStatus');if(st)st.textContent=e.message;}};
-window.lmSaveSettings=async function(){try{const body={enabled:document.getElementById('lmEnabled').value==='true',mode:document.getElementById('lmMode').value,allow_offline_grace:document.getElementById('lmOfflineGrace').value==='true',issuer:document.getElementById('lmIssuer').value.trim(),audience:document.getElementById('lmAudience').value.trim(),entitlement_ttl_seconds:Number(document.getElementById('lmTtl').value),grace_seconds:Number(document.getElementById('lmGrace').value)};const r=await fetch('/api/admin-extended?action=settings',{method:'PATCH',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw Error(d.error||'Unable to save settings');toast('License Master API settings saved');await lmRefreshSettings();}catch(e){toast(e.message,true)}};
+window.lmRefreshSettings=async function(){try{const d=await fetch('/api/admin-settings',{headers:{authorization:'Bearer '+token}});const x=await d.json();if(!d.ok)throw Error(x.error||'Unable to load License Master settings');const s=x.settings||{};['lmIssuer','lmAudience','lmTtl','lmGrace'].forEach((id)=>{const e=document.getElementById(id);if(e)e.value=id==='lmIssuer'?s.issuer||'':id==='lmAudience'?s.audience||'':id==='lmTtl'?(s.entitlement_ttl_seconds||10800):(s.grace_seconds||604800)});const en=document.getElementById('lmEnabled');if(en)en.value=s.enabled===false?'false':'true';const mode=document.getElementById('lmMode');if(mode)mode.value=s.mode||'active';const og=document.getElementById('lmOfflineGrace');if(og)og.value=s.allow_offline_grace===false?'false':'true';const st=document.getElementById('lmSettingsStatus');if(st)st.textContent=(x.database?'Connected to License Master database. ':'Database unavailable. ')+(x.settings_found?'Settings loaded.':'Defaults loaded; settings row was not found.');}catch(e){const st=document.getElementById('lmSettingsStatus');if(st)st.textContent=e.message;}};
+window.lmSaveSettings=async function(){try{const body={enabled:document.getElementById('lmEnabled').value==='true',mode:document.getElementById('lmMode').value,allow_offline_grace:document.getElementById('lmOfflineGrace').value==='true',issuer:document.getElementById('lmIssuer').value.trim(),audience:document.getElementById('lmAudience').value.trim(),entitlement_ttl_seconds:Number(document.getElementById('lmTtl').value),grace_seconds:Number(document.getElementById('lmGrace').value)};const r=await fetch('/api/admin-settings',{method:'PATCH',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw Error(d.error||'Unable to save settings');toast('License Master API settings saved');await lmRefreshSettings();}catch(e){toast(e.message,true)}};
 
 setTimeout(()=>{if(window.loadReleaseSources)window.loadReleaseSources();lmMountManagers()},0);
 </script></body>`);
