@@ -343,7 +343,6 @@ async function validate(req: IncomingMessage, res: ServerResponse) {
         [binding.id, component, installationId],
       ))?.rows[0] as JsonObject | undefined;
       if (state === "active" && enabled && input.activate === true && !installation) {
-        // Serialize activation per license so concurrent requests cannot exceed the limit.
         if (client) await client.query("select pg_advisory_xact_lock(hashtext($1))", [String(binding.id)]);
         const count = Number((await (client ?? db)?.query(
           "select count(distinct installation_id)::int as count from license_installations where binding_id=$1 and status='active'",
@@ -826,7 +825,7 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     if (path === "/api/license/revision") return json(res, 200, { service: "OrbitFS License Master", version: "2.0.0", authority: "master", components: COMPONENTS });
     if (path === "/api/products" && req.method === "GET") return products(req, res);
     if (path === "/api/settings" && req.method === "GET") return settings(req, res);
-    const installationMatch = path.match(/^\/api\/v1\/installations(?:\/([^/]+))?$/);
+    const installationMatch = path.match(/^\/api\/installations(?:\/([^/]+))?$/);
     if (installationMatch) return installations(req, res, installationMatch[1] ? decodeURIComponent(installationMatch[1]) : undefined);
     if (path === "/api/license/validate" && req.method === "POST") return validate(req, res);
     if (path === "/api/license/issue" && req.method === "POST") return issue(req, res);
@@ -853,10 +852,10 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     }
     const adminControlMatch = path.match(/^\/api\/admin\/licenses\/([^/]+)\/control$/);
     if (adminControlMatch && req.method === "POST") return adminControl(req, res, decodeURIComponent(adminControlMatch[1]));
-    const licenseControlMatch = path.match(/^\/api\/v1\/license\/([^/]+)\/control$/);
+    const licenseControlMatch = path.match(/^\/api\/license\/([^/]+)\/control$/);
     if (licenseControlMatch && req.method === "POST") return control(req, res, decodeURIComponent(licenseControlMatch[1]));
     if (path === "/api/releases" && (req.method === "GET" || req.method === "POST")) return releases(req, res);
-    const releaseMatch = path.match(/^\/api\/v1\/releases\/([^/]+)\/(artifact|validate|publish|pause|paused|withdraw|withdrawn|control)$/);
+    const releaseMatch = path.match(/^\/api\/releases\/([^/]+)\/(artifact|validate|publish|pause|paused|withdraw|withdrawn|control)$/);
     if (releaseMatch && req.method === "POST") {
       const action = releaseMatch[2] === "artifact" ? null : releaseMatch[2] === "control" ? String((await body(req)).action || "") : releaseMatch[2];
       if (releaseMatch[2] === "artifact") return artifact(req, res, decodeURIComponent(releaseMatch[1]));
@@ -865,7 +864,7 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     if (path === "/api/releases/latest" && req.method === "GET") return latest(req, res);
     if (path === "/api/deployments/execute" && req.method === "POST") return executeDeployment(req, res);
     if (path === "/api/deployments/sync" && req.method === "POST") return syncDeployment(req, res);
-    const deploymentMatch = path.match(/^\/api\/v1\/deployments(?:\/([^/]+))?$/);
+    const deploymentMatch = path.match(/^\/api\/deployments(?:\/([^/]+))?$/);
     if (deploymentMatch) return deployments(req, res, deploymentMatch[1] ? decodeURIComponent(deploymentMatch[1]) : undefined);
     return json(res, 404, { error: "Not found" });
   } catch (error) {
@@ -885,9 +884,4 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
   }
 }
 
-// Vercel may discover imported modules as function entries; expose the same
-// callable as a default export so its runtime loader accepts this module.
 export default handler;
-
-// Vercel loads this module inside a serverless function; never start the local
-// development listener there, even if NODE_ENV is missing from the deployment.
