@@ -7,8 +7,7 @@ const walk = (dir) => {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (["node_modules", ".next", ".git"].includes(entry.name)) continue;
     const path = `${dir}/${entry.name}`;
-    if (entry.isDirectory()) walk(path);
-    else files.push(path);
+    if (entry.isDirectory()) walk(path); else files.push(path);
   }
 };
 for (const root of roots) walk(root);
