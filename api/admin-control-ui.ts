@@ -32,7 +32,7 @@ export default function adminControlUi(_req: IncomingMessage, res: ServerRespons
     ['GET','/api/billing','Billing service handshake'],
     ['POST','/api/admin/licenses/:id/control','License enforcement control']
   ];
-  const renderCanonicalEndpoints=()=>{const box=document.getElementById('endpointList');if(!box)return;box.innerHTML=canonicalRows.map(x=>'<div class="endpoint"><span class="method">'+x[0]+'</span><span>'+x[1]+'</span><span class="muted">'+x[2]+'</span></div>').join('');};
+  const renderCanonicalEndpoints=()=>{const box=document.getElementById('endpointList');if(!box)return;if(box.dataset.canonicalApi==='1' && !box.textContent.includes('/api/v1/'))return;box.innerHTML=canonicalRows.map(x=>'<div class="endpoint"><span class="method">'+x[0]+'</span><span>'+x[1]+'</span><span class="muted">'+x[2]+'</span></div>').join('');box.dataset.canonicalApi='1';};
   const nativeCopy=window.copyText;
   if(typeof nativeCopy==='function') window.copyText=(value)=>nativeCopy(rewrite(value));
   const normalize=()=>{
@@ -40,9 +40,10 @@ export default function adminControlUi(_req: IncomingMessage, res: ServerRespons
       if(el.childElementCount===0 && typeof el.textContent==='string' && el.textContent.includes('/api/v1/')) el.textContent=rewrite(el.textContent);
       if('value' in el && typeof el.value==='string' && el.value.includes('/api/v1/')) el.value=rewrite(el.value);
     });
-    renderCanonicalEndpoints();
   };
   normalize();
+  renderCanonicalEndpoints();
+  setInterval(renderCanonicalEndpoints,500);
   new MutationObserver(normalize).observe(document.documentElement,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['value']});
 })();
 </script>
