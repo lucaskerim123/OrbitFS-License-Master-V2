@@ -24,12 +24,26 @@ let adminSource = readFileSync(adminFile, "utf8");
 if (!adminSource.includes('import { Pool } from "pg";')) {
   adminSource = adminSource.replace('import type { IncomingMessage, ServerResponse } from "node:http";','import type { IncomingMessage, ServerResponse } from "node:http";\nimport { Pool } from "pg";');
 }
+
+// This script is deliberately idempotent. Older revisions used an exact source
+// marker and failed builds when harmless formatting/import changes moved it.
+// The authority contract is the actual settings database transport below, not
+// the presence of a particular comment/string in the file.
 if (!adminSource.includes("const SETTINGS_DATABASE_URL")) {
+  const insert = `const SETTINGS_DATABASE_URL = String(process.env.DATABASE_URL || "").replace(/[?&]sslmode=[^&]+/i, "");\nconst settingsDb = SETTINGS_DATABASE_URL ? new Pool({ connectionString: SETTINGS_DATABASE_URL, max: 3, ssl: { rejectUnauthorized: false } }) : null;`;
   const marker = 'const adminEmails = new Set((process.env.ADMIN_EMAILS || "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean));';
-  const insert = `${marker}\nconst SETTINGS_DATABASE_URL = String(process.env.DATABASE_URL || "").replace(/[?&]sslmode=[^&]+/i, "");\nconst settingsDb = SETTINGS_DATABASE_URL ? new Pool({ connectionString: SETTINGS_DATABASE_URL, max: 3, ssl: { rejectUnauthorized: false } }) : null;`;
-  if (!adminSource.includes(marker)) throw new Error("License Master admin marker not found");
-  adminSource = adminSource.replace(marker, insert, 1);
+  if (adminSource.includes(marker)) {
+    adminSource = adminSource.replace(marker, `${marker}\n${insert}`, 1);
+  } else {
+    const match = adminSource.match(/const adminEmails\s*=.*?;\n/);
+    if (!match || match.index === undefined) {
+      throw new Error("License Master admin authentication source not found; cannot establish settings database transport safely");
+    }
+    const at = match.index + match[0].length;
+    adminSource = `${adminSource.slice(0, at)}${insert}\n${adminSource.slice(at)}`;
+  }
 }
+
 const settingsStart = adminSource.indexOf("async function settingsAction(req: IncomingMessage, res: ServerResponse) {");
 const settingsEnd = adminSource.indexOf("async function healthAction", settingsStart);
 if (settingsStart < 0 || settingsEnd < 0) throw new Error("License Master admin settings function marker not found");
