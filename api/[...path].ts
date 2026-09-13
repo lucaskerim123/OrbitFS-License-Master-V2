@@ -39,8 +39,17 @@ const apiIndex = (res: ServerResponse) => sendJson(res, 200, {
     syncDeployments: `${apiBase}/deployments/sync`,
     billingHandshake: `${apiBase}/billing`,
     admin: `${apiBase}/admin`,
+    adminMe: `${apiBase}/admin/me`,
   },
 });
+
+const canonicalAdminPath = (pathname: string) =>
+  pathname === "/api/admin/me" ||
+  pathname === "/api/setup/status" ||
+  pathname === "/api/setup/admin" ||
+  pathname === "/api/admin/licenses" ||
+  pathname === "/api/admin/releases" ||
+  /^\/api\/admin\/licenses\/[^/]+\/control$/.test(pathname);
 
 export default async function api(req: IncomingMessage, res: ServerResponse) {
   try {
@@ -62,10 +71,11 @@ export default async function api(req: IncomingMessage, res: ServerResponse) {
     if (pathname === "/api/release-capture") {const {default:x}=await import("./release-capture.js");return x(req,res);}
     if (pathname === "/api/release-control") {const {default:x}=await import("./release-control.js");return x(req,res);}
 
-    // The public contract is canonical /api/*. The current V2 server keeps
-    // its internal handlers versioned; this adapter is the only compatibility
-    // boundary and must never be exposed as a client-facing API.
-    const internalPath = pathname.replace(/^\/api\//, "/api/v1/");
+    // Admin/setup routes are already canonical in src/server.ts. Do not turn
+    // them into /api/v1/* or the Master admin session check becomes unreachable.
+    const internalPath = canonicalAdminPath(pathname)
+      ? pathname
+      : pathname.replace(/^\/api\//, "/api/v1/");
     const originalUrl=req.url;
     req.url=internalPath+(rawUrl.includes("?")?rawUrl.slice(rawUrl.indexOf("?")):"");
     const {handler}=await import("../src/server.js");
