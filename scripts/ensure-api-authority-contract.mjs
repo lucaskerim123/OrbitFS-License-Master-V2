@@ -16,21 +16,36 @@ for (const root of roots) walk(root);
 for (const file of files) {
   let source;
   try { source = readFileSync(file, "utf8"); } catch { continue; }
-  const next = source
+  let next = source
     .replaceAll("/api/v1/", "/api/")
+    .replaceAll("/api/v1", "/api/")
     .replaceAll("\\/api\\/v1", "\\/api")
+    .replaceAll('https://orbitfs.cc', '${SITE_URL}')
+    .replaceAll('https://www.orbitfs.cc', '${SITE_URL}')
     .replaceAll('new URL(req.url||"/","http://localhost")', 'new URL(req.url||"/",process.env.SITE_URL||"https://example.invalid")')
     .replaceAll('new URL(req.url || "/", "http://localhost")', 'new URL(req.url || "/", process.env.SITE_URL || "https://example.invalid")');
-  if (next !== source) writeFileSync(file, next);
-}
 
-const releaseUi = "web/admin.html";
-if (existsSync(releaseUi)) {
-  let source = readFileSync(releaseUi, "utf8");
-  source = source.replaceAll("V1-vercel-base / release-updates", "V1-vercel-base / base-release")
-    .replaceAll("V1-vercel-base · release-updates", "V1-vercel-base · base-release")
-    .replaceAll("Loading V1-vercel-base / release-updates", "Loading V1-vercel-base / base-release");
-  writeFileSync(releaseUi, source);
+  // Admin HTML is served from the Master site, so all client-side API links are relative.
+  if (file === "web/admin.html" || file === "web/admin-control.html") {
+    next = next
+      .replaceAll("Copy API base", "Copy API base")
+      .replaceAll("location.origin+'/api/v1'", "location.origin+'/api'")
+      .replaceAll("location.origin + '/api/v1'", "location.origin + '/api'")
+      .replaceAll("value=\"https://incendiarynetworks.cc/api\"", "value=\"\"")
+      .replaceAll("value=\"https://incendiarynetworks.cc/api/v1\"", "value=\"\"")
+      .replaceAll('>Versioned API<', '>API base<')
+      .replaceAll('Authority</b><span>incendiarynetworks.cc</span>', 'Authority</b><span id="authorityHost">—</span>');
+  }
+
+  // Release sources are fixed repository names; V1 is historical naming, not API versioning.
+  if (file === "web/admin.html" || file === "web/admin-control.html") {
+    next = next.replaceAll("V1-vercel-base / release-updates", "V1-vercel-base / base-release")
+      .replaceAll("V1-vercel-base · release-updates", "V1-vercel-base · base-release")
+      .replaceAll("Loading V1-vercel-base / release-updates", "Loading V1-vercel-base / base-release")
+      .replaceAll("function sourceBranch(){return'release-updates'}", "function sourceBranch(mode){return mode==='base'?'base-release':'release-updates'}")
+      .replaceAll("sourceBranch()", "sourceBranch('base')");
+  }
+  if (next !== source) writeFileSync(file, next);
 }
 
 const releaseControl = "api/release-control.ts";
@@ -48,13 +63,6 @@ if (existsSync(server)) {
     .replace('const licenseControlMatch = path.match(/^\\/api\\/v1\\/license\\/([^/]+)\\/control$/);', 'const licenseControlMatch = path.match(/^\\/api\\/license\\/([^/]+)\\/control$/);')
     .replace('const releaseMatch = path.match(/^\\/api\\/v1\\/releases\\/([^/]+)\\/(artifact|validate|publish|pause|paused|withdraw|withdrawn|control)$/);', 'const releaseMatch = path.match(/^\\/api\\/releases\\/([^/]+)\\/(artifact|validate|publish|pause|paused|withdraw|withdrawn|control)$/);')
     .replace('const deploymentMatch = path.match(/^\\/api\\/v1\\/deployments(?:\\/([^/]+))?$/);', 'const deploymentMatch = path.match(/^\\/api\\/deployments(?:\\/([^/]+))?$/);');
-  const projectCreate = '    if (!project) project = await vapi("/v11/projects", { method: "POST", body: JSON.stringify({ name: projectName, framework: "sveltekit" }) });';
-  if (source.includes(projectCreate) && !source.includes("const activeProject=project")) {
-    source = source.replace(projectCreate, `${projectCreate}\n    if (!project) throw new Error("Unable to create Vercel project");\n    const activeProject=project;`)
-      .replaceAll("encodeURIComponent(project.id)", "encodeURIComponent(activeProject.id)")
-      .replaceAll("name: project.name, project: project.id", "name: activeProject.name, project: activeProject.id")
-      .replaceAll("projectName: project.name", "projectName: activeProject.name");
-  }
   writeFileSync(server, source);
 }
 
