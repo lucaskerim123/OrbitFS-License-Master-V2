@@ -5,16 +5,12 @@
   "installCommand": "npm ci",
   "buildCommand": "npm run build",
   "functions": {
-    "api/**/*.ts": { "maxDuration": 10, "includeFiles": "web/admin.html" }
+    "api/**/*.ts": { "maxDuration": 10, "includeFiles": "web/admin-control.html" }
   },
   "rewrites": [
     { "source": "/admin", "destination": "/api/admin" },
     { "source": "/admin/", "destination": "/api/admin" },
     { "source": "/admin/releases", "destination": "/api/admin-release-ui" },
-    { "source": "/admin/products", "destination": "/api/admin-products-ui" },
-    { "source": "/v1/products", "destination": "/api/products" },
-    { "source": "/v1/products/:path*", "destination": "/api/products" },
-    { "source": "/api/v1/products", "destination": "/api/products" },
-    { "source": "/api/v1/products/:path*", "destination": "/api/products" }
+    { "source": "/admin/products", "destination": "/api/admin-products-ui" }
   ]
 }
