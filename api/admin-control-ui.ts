@@ -12,6 +12,27 @@ export default function adminControlUi(_req: IncomingMessage, res: ServerRespons
     else if(input&&input.url) input=new Request(rewrite(input.url),input);
     return nativeFetch(input,init);
   };
+  const canonicalRows=[
+    ['GET','/api/health','Service health'],
+    ['GET','/api/products','Product catalogue'],
+    ['GET','/api/licenses','License administration'],
+    ['POST','/api/license/issue','License issuance'],
+    ['POST','/api/license/validate','Runtime validation'],
+    ['GET','/api/license/revision','License API revision'],
+    ['GET','/api/license/public-key','Entitlement public key'],
+    ['GET','/api/releases','Release catalogue'],
+    ['GET','/api/releases/latest','Latest release'],
+    ['POST','/api/releases/:id/validate','Release validation'],
+    ['POST','/api/releases/:id/publish','Release publish'],
+    ['POST','/api/releases/:id/control','Release control'],
+    ['GET','/api/installations','Installations'],
+    ['GET','/api/deployments','Deployment jobs'],
+    ['POST','/api/deployments/execute','Execute deployment'],
+    ['POST','/api/deployments/sync','Sync deployment state'],
+    ['GET','/api/billing','Billing service handshake'],
+    ['POST','/api/admin/licenses/:id/control','License enforcement control']
+  ];
+  const renderCanonicalEndpoints=()=>{const box=document.getElementById('endpointList');if(!box)return;box.innerHTML=canonicalRows.map(x=>'<div class="endpoint"><span class="method">'+x[0]+'</span><span>'+x[1]+'</span><span class="muted">'+x[2]+'</span></div>').join('');};
   const nativeCopy=window.copyText;
   if(typeof nativeCopy==='function') window.copyText=(value)=>nativeCopy(rewrite(value));
   const normalize=()=>{
@@ -19,6 +40,7 @@ export default function adminControlUi(_req: IncomingMessage, res: ServerRespons
       if(el.childElementCount===0 && typeof el.textContent==='string' && el.textContent.includes('/api/v1/')) el.textContent=rewrite(el.textContent);
       if('value' in el && typeof el.value==='string' && el.value.includes('/api/v1/')) el.value=rewrite(el.value);
     });
+    renderCanonicalEndpoints();
   };
   normalize();
   new MutationObserver(normalize).observe(document.documentElement,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['value']});
