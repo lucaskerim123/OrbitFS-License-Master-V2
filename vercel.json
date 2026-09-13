@@ -9,8 +9,8 @@
   },
   "rewrites": [
     { "source": "/api/admin-control-login", "destination": "/api/auth/login" },
-    { "source": "/admin", "destination": "/api/admin" },
-    { "source": "/admin/", "destination": "/api/admin" },
+    { "source": "/admin", "destination": "/api/admin-control-ui" },
+    { "source": "/admin/", "destination": "/api/admin-control-ui" },
     { "source": "/admin/releases", "destination": "/api/admin-release-ui" },
     { "source": "/admin/products", "destination": "/api/admin-products-ui" }
   ]
