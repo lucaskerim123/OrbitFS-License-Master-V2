@@ -24,7 +24,11 @@ for (const file of [
   "tools/api-layout-patch.py",
   "tools/apply-product-api-patch.mjs",
 ]) {
-  try { replaceIn(file, [["/api/v1/", "/api/"]]); } catch {}
+  try {
+    let source = readFileSync(file, "utf8");
+    source = source.replace(/\/api\/v[0-9]+(?=\/|['"`)]|\b)/g, "/api");
+    writeFileSync(file, source);
+  } catch {}
 }
 
 // SITE_URL is the only Master site-origin setting. Never bake a deployment
@@ -58,7 +62,6 @@ const patchReleaseSource = (file) => {
     .replace(/const RELEASE_BASE_BRANCH[^;]*;\n?/g, "")
     .replace(/const RELEASE_UPDATE_REPOSITORY[^;]*;\n?/g, "")
     .replace(/const RELEASE_UPDATE_BRANCH[^;]*;\n?/g, "");
-  source = source.replace(/const SITE_URL[^;]*;\n?/g, (match) => match.includes("SITE_URL") ? match : "");
   source = source.replace(/const base = kind === "base"; const repo = base \? [^;]+; const branch = base \? [^;]+;/,
     `const base = kind === "base"; const repo = base ? "${releaseBase}" : "${releaseUpdates}"; const branch = base ? "${releaseBaseBranch}" : "${releaseUpdatesBranch}";`);
   source = source.replace(/const repo=kind==="base"\?[^;]+;const branch=kind==="base"\?[^;]+;/,
@@ -70,11 +73,16 @@ const patchReleaseSource = (file) => {
 patchReleaseSource("api/admin-extended.ts");
 patchReleaseSource("api/release-capture.ts");
 
+// Browser UI uses its own origin for the public API. This avoids hardcoding
+// any deployment hostname and keeps SITE_URL an environment-level setting.
 const uiFile = "web/admin.html";
 let uiSource = readFileSync(uiFile, "utf8");
 uiSource = uiSource.replaceAll("ext('settings')", "api('/api/admin-settings')");
-uiSource = uiSource.replaceAll("incendiarynetworks.cc", "");
-uiSource = uiSource.replaceAll("orbitfs.cc", "");
+uiSource = uiSource.replaceAll("https://incendiarynetworks.cc/api", "/api");
+uiSource = uiSource.replaceAll("https://incendiarynetworks.cc", "");
+uiSource = uiSource.replaceAll("https://orbitfs.cc/api", "/api");
+uiSource = uiSource.replaceAll("https://orbitfs.cc", "");
+uiSource = uiSource.replaceAll("/api/v1", "/api");
 uiSource = uiSource.replaceAll("V1-vercel-base · release-updates", "V1-vercel-base · base-release");
 uiSource = uiSource.replaceAll("V1-vercel-base / release-updates", "V1-vercel-base / base-release");
 uiSource = uiSource.replace("function sourceBranch(){return'release-updates'}", "function sourceBranch(mode){return mode==='base'?'base-release':'release-updates'}");
@@ -83,8 +91,10 @@ writeFileSync(uiFile, uiSource);
 
 const controlUi = "web/admin-control.html";
 let controlSource = readFileSync(controlUi, "utf8");
-controlSource = controlSource.replaceAll("incendiarynetworks.cc", "");
-controlSource = controlSource.replaceAll("orbitfs.cc", "");
+controlSource = controlSource.replaceAll("https://incendiarynetworks.cc/api", "/api");
+controlSource = controlSource.replaceAll("https://incendiarynetworks.cc", "");
+controlSource = controlSource.replaceAll("https://orbitfs.cc/api", "/api");
+controlSource = controlSource.replaceAll("https://orbitfs.cc", "");
 controlSource = controlSource.replaceAll("/api/v1", "/api");
 controlSource = controlSource.replaceAll("ext('settings')", "fetch('/api/admin-settings',{headers:{authorization:'Bearer '+sessionStorage.getItem('orbitfs_admin_access_token')}}).then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Unable to load settings');return d})");
 // Never expose a GitHub token or read the wrong repository/branch from the browser.
@@ -96,7 +106,7 @@ const envFile = ".env.example";
 let env = readFileSync(envFile, "utf8");
 env = env.replaceAll("https://incendiarynetworks.cc", "")
   .replaceAll("https://www.orbitfs.cc", "")
-  .replaceAll("https://orbitfs.cc", "")
+  .replaceAll("https://orbitfs.cc", "");
 env = env.split("\n").filter(line => !/^RELEASE_(BASE|UPDATE)_/.test(line)).join("\n");
 writeFileSync(envFile, env);
 
