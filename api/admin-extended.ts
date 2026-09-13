@@ -10,10 +10,10 @@ const BILLING = process.env.BILLING_API_TOKEN || "";
 const DEPLOYER = process.env.DEPLOYER_API_TOKEN || "";
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "";
 const SITE_URL = String(process.env.SITE_URL || "").replace(/\/$/, "");
-const RELEASE_BASE_REPOSITORY = String(process.env.RELEASE_BASE_REPOSITORY || "").trim();
-const RELEASE_BASE_BRANCH = String(process.env.RELEASE_BASE_BRANCH || "").trim();
-const RELEASE_UPDATE_REPOSITORY = String(process.env.RELEASE_UPDATE_REPOSITORY || "").trim();
-const RELEASE_UPDATE_BRANCH = String(process.env.RELEASE_UPDATE_BRANCH || "").trim();
+const RELEASE_BASE_REPOSITORY = "lucaskerim123/V1-vercel-base";
+const RELEASE_BASE_BRANCH = "base-release";
+const RELEASE_UPDATE_REPOSITORY = "lucaskerim123/V1-vercel-engine";
+const RELEASE_UPDATE_BRANCH = "release-updates";
 const adminEmails = new Set((process.env.ADMIN_EMAILS || "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean));
 const SETTINGS_DATABASE_URL = String(process.env.DATABASE_URL || "").replace(/[?&]sslmode=[^&]+/i, "");
 const settingsDb = SETTINGS_DATABASE_URL ? new Pool({ connectionString: SETTINGS_DATABASE_URL, max: 3, ssl: { rejectUnauthorized: false } }) : null;
@@ -61,8 +61,9 @@ async function getSettingsForHealth() { await ensureSettingsTable(); return (awa
 
 async function releaseSource(kind: string) {
   if (!GITHUB_TOKEN) throw new Error("GITHUB_TOKEN is not configured");
-  const base = kind === "base"; const repo = base ? RELEASE_BASE_REPOSITORY : RELEASE_UPDATE_REPOSITORY; const branch = base ? RELEASE_BASE_BRANCH : RELEASE_UPDATE_BRANCH;
-  if (!repo || !branch) throw new Error(`Release source configuration is missing for ${base ? "base" : "update"}: set RELEASE_${base ? "BASE" : "UPDATE"}_REPOSITORY and RELEASE_${base ? "BASE" : "UPDATE"}_BRANCH`);
+  const base = kind === "base";
+  const repo = base ? RELEASE_BASE_REPOSITORY : RELEASE_UPDATE_REPOSITORY;
+  const branch = base ? RELEASE_BASE_BRANCH : RELEASE_UPDATE_BRANCH;
   const r = await fetch(`https://api.github.com/repos/${repo}/commits?sha=${encodeURIComponent(branch)}&per_page=1`, { headers: { accept: "application/vnd.github+json", authorization: `Bearer ${GITHUB_TOKEN}`, "x-github-api-version": "2022-11-28", "user-agent": "OrbitFS-License-Master-V2" } });
   const data = await r.json().catch(() => []); if (!r.ok) throw new Error(String((data as { message?: unknown })?.message || "GitHub source lookup failed"));
   const c = Array.isArray(data) ? data[0] as Record<string, unknown> | undefined : undefined; if (!c?.sha) throw new Error(`No commits found for ${repo} / ${branch}`);
@@ -79,7 +80,8 @@ async function proxy(req: IncomingMessage, res: ServerResponse, target: string) 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   if (req.method === "OPTIONS") { res.statusCode = 204; return res.end(); }
   if (!(await isAdmin(req))) return json(res, 401, { error: "Administrator authentication is required" });
-  const url = new URL(req.url || "/", SITE_URL || "https://orbitfs.cc"); const action = url.searchParams.get("action") || ""; const id = url.searchParams.get("id") || "";
+  if (!SITE_URL) return json(res, 500, { error: "SITE_URL is not configured" });
+  const url = new URL(req.url || "/", SITE_URL); const action = url.searchParams.get("action") || ""; const id = url.searchParams.get("id") || "";
   try {
     if (action === "settings") return settingsAction(req, res);
     if (action === "health") return json(res, 200, { ok: true, database: true, settings_found: true, settings: await getSettingsForHealth(), api: "License Master V2", services: { billing: Boolean(BILLING), deployer: Boolean(DEPLOYER) }, endpoints: { base: "/api", billing: { products: "/api/products", issue: "/api/license/issue", validate: "/api/license/validate", releases: "/api/releases" }, deployer: { releases: "/api/releases", installations: "/api/installations", deployments: "/api/deployments", execute: "/api/deployments/execute", sync: "/api/deployments/sync" }, updater: { releases: "/api/releases", revision: "/api/license/revision" } } });
