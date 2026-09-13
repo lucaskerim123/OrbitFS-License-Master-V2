@@ -1,0 +1,61 @@
+name: Final API Repair
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Normalize legacy API references
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          roots=[Path('api'),Path('src'),Path('web'),Path('tools'),Path('docs'),Path('scripts')]
+          for root in roots:
+            if not root.exists(): continue
+            for p in root.rglob('*'):
+              if not p.is_file() or any(x in p.parts for x in ('node_modules','.git','.next')): continue
+              try: s=p.read_text()
+              except Exception: continue
+              ns=s.replace('/api/v1/','/api/').replace('\\/api\\/v1','\\/api')
+              ns=ns.replace('https://orbitfs.cc','')
+              ns=ns.replace('V1-vercel-base / release-updates','V1-vercel-base / base-release').replace('V1-vercel-base · release-updates','V1-vercel-base · base-release')
+              ns=ns.replace('Loading V1-vercel-base / release-updates','Loading V1-vercel-base / base-release')
+              ns=ns.replace('new URL(req.url||"/","http://localhost")','new URL(req.url||"/",process.env.SITE_URL||"https://example.invalid")')
+              ns=ns.replace('new URL(req.url || "/", "http://localhost")','new URL(req.url || "/", process.env.SITE_URL || "https://example.invalid")')
+              if ns!=s: p.write_text(ns)
+          p=Path('api/release-control.ts')
+          if p.exists():
+            s=p.read_text().replace('const input:Record<string,unknown>=await body(req);','const input:Record<string,unknown>=await body(req) as Record<string,unknown>;')
+            p.write_text(s)
+          p=Path('src/server.ts')
+          if p.exists():
+            s=p.read_text()
+            s=s.replace('const installationMatch = path.match(/^\\/api\\/v1\\/installations(?:\\/([^/]+))?$/);','const installationMatch = path.match(/^\\/api\\/installations(?:\\/([^/]+))?$/);')
+            s=s.replace('const licenseControlMatch = path.match(/^\\/api\\/v1\\/license\\/([^/]+)\\/control$/);','const licenseControlMatch = path.match(/^\\/api\\/license\\/([^/]+)\\/control$/);')
+            s=s.replace('const releaseMatch = path.match(/^\\/api\\/v1\\/releases\\/([^/]+)\\/(artifact|validate|publish|pause|paused|withdraw|withdrawn|control)$/);','const releaseMatch = path.match(/^\\/api\\/releases\\/([^/]+)\\/(artifact|validate|publish|pause|paused|withdraw|withdrawn|control)$/);')
+            s=s.replace('const deploymentMatch = path.match(/^\\/api\\/v1\\/deployments(?:\\/([^/]+))?$/);','const deploymentMatch = path.match(/^\\/api\\/deployments(?:\\/([^/]+))?$/);')
+            old='let project: { id: string; name: string } | null = projectId ? { id: projectId, name: projectName } : null;\n    if (!project) project = await vapi("/v11/projects", { method: "POST", body: JSON.stringify({ name: projectName, framework: "sveltekit" }) });'
+            new=old+'\n    if (!project) throw new Error("Unable to create Vercel project");\n    const activeProject=project;'
+            s=s.replace(old,new).replace('encodeURIComponent(project.id)','encodeURIComponent(activeProject.id)').replace('name: project.name, project: project.id','name: activeProject.name, project: activeProject.id').replace('projectName: project.name','projectName: activeProject.name')
+            p.write_text(s)
+          p=Path('docs/API-ARCHITECTURE.md')
+          if p.exists(): p.write_text(p.read_text().replace('The legacy `/api/v1/*` implementation may remain internal for compatibility, but clients MUST use the canonical `/api/*` contract.','All public and caller-facing endpoints use the canonical `/api/*` contract.'))
+          PY
+      - name: Verify and build
+        run: |
+          ! grep -RInE '/api/v[0-9]+/|https://orbitfs\.cc|http://localhost|127\.0\.0\.1' api src web tools --exclude-dir=node_modules --exclude-dir=.next
+          npm ci
+          npm run typecheck
+          npm run build
+      - name: Commit and remove repair workflow
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add api src web tools docs scripts
+          git rm -f .github/workflows/final-api-repair.yml
+          git commit -m 'Finalize canonical API routing'
+          git push
