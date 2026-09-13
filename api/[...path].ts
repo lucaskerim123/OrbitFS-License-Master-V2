@@ -19,11 +19,50 @@ function legacyPath(pathname: string): string {
   return pathname;
 }
 
+const sendJson = (res: ServerResponse, status: number, value: unknown) => {
+  res.statusCode = status;
+  res.setHeader("content-type", "application/json; charset=utf-8");
+  res.setHeader("cache-control", "no-store");
+  res.end(JSON.stringify(value));
+};
+
+const apiIndex = (res: ServerResponse) => sendJson(res, 200, {
+  ok: true,
+  service: "OrbitFS License Master V2",
+  api: "/api",
+  authority: "license-master",
+  database: Boolean(process.env.DATABASE_URL),
+  services: {
+    billing: Boolean(process.env.BILLING_API_TOKEN),
+    deployer: Boolean(process.env.DEPLOYER_API_TOKEN),
+    github: Boolean(process.env.GITHUB_TOKEN || process.env.GH_TOKEN),
+    signing: Boolean(process.env.LICENSE_ENTITLEMENT_PRIVATE_KEY_B64 || process.env.ENTITLEMENT_PRIVATE_KEY_B64),
+  },
+  endpoints: {
+    products: "/api/products",
+    settings: "/api/settings",
+    licenses: "/api/licenses",
+    licenseIssue: "/api/license/issue",
+    licenseValidate: "/api/license/validate",
+    licenseRevision: "/api/license/revision",
+    licensePublicKey: "/api/license/public-key",
+    releases: "/api/releases",
+    latestRelease: "/api/releases/latest",
+    installations: "/api/installations",
+    deployments: "/api/deployments",
+    executeDeployment: "/api/deployments/execute",
+    syncDeployments: "/api/deployments/sync",
+    admin: "/api/admin",
+  },
+});
+
 export default async function api(req: IncomingMessage, res: ServerResponse) {
   try {
     const rawUrl = String(req.url || "/");
     const rawPath = rawUrl.split("?")[0];
     const pathname = rawPath === "/api" || rawPath === "/api/" ? "/api" : rawPath.startsWith("/api/") ? rawPath : `/api${rawPath.startsWith("/") ? rawPath : `/${rawPath}`}`;
+    if (req.method === "OPTIONS") { res.statusCode = 204; return res.end(); }
+    if (pathname === "/api") return apiIndex(res);
     if (pathname === "/api/admin" || pathname === "/api/admin/") {
       const html = readFileSync(new URL("../web/admin-control.html", import.meta.url), "utf8");
       res.statusCode=200;res.setHeader("content-type","text/html; charset=utf-8");res.setHeader("cache-control","no-store, max-age=0");return res.end(html);
@@ -36,9 +75,8 @@ export default async function api(req: IncomingMessage, res: ServerResponse) {
     if (pathname === "/api/release-capture") {const {default:x}=await import("./release-capture.js");return x(req,res);}
     if (pathname === "/api/release-control") {const {default:x}=await import("./release-control.js");return x(req,res);}
 
-    // Public/caller-facing contract is canonical /api. Internally this routes
-    // into the existing, proven V2 handlers so no licensing/deployment logic
-    // is duplicated.
+    // Public callers use the canonical /api contract. Existing V2 business
+    // logic remains the authority internally, so there is no second backend.
     const internalPath = legacyPath(pathname);
     const originalUrl=req.url;
     req.url=internalPath+(rawUrl.includes("?")?rawUrl.slice(rawUrl.indexOf("?")):"");
