@@ -525,7 +525,7 @@ async function signedDownload(path: string, expiresIn = 300) {
 }
 
 async function latest(req: IncomingMessage, res: ServerResponse) {
-  const url = new URL(req.url || "/", "http://localhost");
+  const url = new URL(req.url || "/", process.env.SITE_URL || "https://example.invalid");
   const component = url.searchParams.get("component") || "orbitfs_base";
   const channel = url.searchParams.get("channel") || "stable";
   const release = (await query<JsonObject>(
@@ -574,10 +574,12 @@ async function executeDeployment(req: IncomingMessage, res: ServerResponse) {
     };
     let project: { id: string; name: string } | null = projectId ? { id: projectId, name: projectName } : null;
     if (!project) project = await vapi("/v11/projects", { method: "POST", body: JSON.stringify({ name: projectName, framework: "sveltekit" }) });
+    if (!project) throw new Error("Unable to create Vercel project");
+    const activeProject = project;
     await query("update deployment_jobs set progress=25,message='Configuring Vercel project',updated_at=now() where id=$1", [job.id]);
     const env = input.env && typeof input.env === "object" && !Array.isArray(input.env) ? input.env as JsonObject : {};
     for (const [key, value] of Object.entries(env)) {
-      await vapi(`/v10/projects/${encodeURIComponent(project.id)}/env?upsert=true`, {
+      await vapi(`/v10/projects/${encodeURIComponent(activeProject.id)}/env?upsert=true`, {
         method: "POST",
         body: JSON.stringify({ key, value: String(value), type: "encrypted", target: ["production", "preview", "development"] }),
       });
@@ -601,12 +603,12 @@ async function executeDeployment(req: IncomingMessage, res: ServerResponse) {
     const deployment = await vapi("/v13/deployments", {
       method: "POST",
       body: JSON.stringify({
-        name: project.name, project: project.id, target: "production", files: uploaded,
+        name: activeProject.name, project: activeProject.id, target: "production", files: uploaded,
         projectSettings: manifest.projectSettings || { framework: "sveltekit", buildCommand: "npm run build", installCommand: "npm ci" },
       }),
     }) as JsonObject;
     const result = {
-      jobId: job.id, projectId: project.id, projectName: project.name,
+      jobId: job.id, projectId: activeProject.id, projectName: activeProject.name,
       deploymentId: deployment?.id || deployment?.uid || null,
       deploymentUrl: deployment?.url ? `https://${deployment.url}` : null, version: release.version, releaseId,
     };
@@ -716,6 +718,42 @@ const adminPage = () => {
   return html.replace("__SUPABASE_URL__", JSON.stringify(SUPABASE_URL)).replace("__SUPABASE_ANON_KEY__", JSON.stringify(SUPABASE_ANON_KEY));
 };
 
+
+// ORBITFS_ADMIN_CONTROL_LOGIN_PATCH
+const adminControlLogin = async (req: IncomingMessage, res: ServerResponse) => {
+  if (req.method !== "POST") return json(res, 405, { error: "Method not allowed" });
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return json(res, 503, { error: "Supabase authentication is not configured" });
+  try {
+    const input = await body(req);
+    const email = String(input.email || "").trim().toLowerCase();
+    const password = String(input.password || "");
+    if (!email || !password) return json(res, 400, { error: "Email and password are required" });
+    const tokenResponse = await fetch(SUPABASE_URL + "/auth/v1/token?grant_type=password", {
+      method: "POST",
+      headers: { apikey: SUPABASE_ANON_KEY, "content-type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const tokenData = await tokenResponse.json().catch(() => ({})) as JsonObject;
+    const accessToken = typeof tokenData.access_token === "string" ? tokenData.access_token : "";
+    if (!tokenResponse.ok || !accessToken) return json(res, 401, { error: String(tokenData.error_description || tokenData.msg || "Authentication failed") });
+    const userResponse = await fetch(SUPABASE_URL + "/auth/v1/user", {
+      headers: { apikey: SUPABASE_ANON_KEY, authorization: "Bearer " + accessToken },
+    });
+    if (!userResponse.ok) return json(res, 401, { error: "Unable to verify administrator account" });
+    const user = await userResponse.json() as JsonObject;
+    const metadata = user.app_metadata && typeof user.app_metadata === "object" ? user.app_metadata as JsonObject : {};
+    const userEmail = String(user.email || email).toLowerCase();
+    if (!adminEmails.has(userEmail) && metadata.role !== "admin") return json(res, 403, { error: "Administrator access is required" });
+    return json(res, 200, {
+      access_token: accessToken,
+      expires_in: Number(tokenData.expires_in || 0),
+      user: { id: String(user.id || ""), email: String(user.email || email) },
+    });
+  } catch (error) {
+    return json(res, 400, { error: error instanceof Error ? error.message : "Authentication failed" });
+  }
+};
+
 export async function handler(req: IncomingMessage, res: ServerResponse) {
   const requestId = String(req.headers["x-request-id"] || randomUUID()).slice(0, 128);
   res.setHeader("x-request-id", requestId);
@@ -736,7 +774,7 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
   if (!originAllowed) return json(res, 403, { error: "Origin is not allowed" });
 
   try {
-    const url = new URL(req.url || "/", "http://localhost");
+    const url = new URL(req.url || "/", process.env.SITE_URL || "https://example.invalid");
     const path = url.pathname;
     if (path === "/") {
       return text(res, 200, adminPage(), "text/html; charset=utf-8");
@@ -777,7 +815,7 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
         signingConfigured,
       });
     }
-    if (path === "/api/v1/license/public-key") {
+    if (path === "/api/license/public-key") {
       try {
         const key = publicPem();
         return key ? text(res, 200, key) : json(res, 503, { error: "Entitlement signing is not configured", code: "SIGNING_KEY_MISSING" });
@@ -785,18 +823,20 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
         return json(res, 503, { error: "Entitlement signing key is invalid", code: "SIGNING_KEY_INVALID" });
       }
     }
-    if (path === "/api/v1/license/revision") return json(res, 200, { service: "OrbitFS License Master", version: "2.0.0", authority: "master", components: COMPONENTS });
-    if (path === "/api/v1/products" && req.method === "GET") return products(req, res);
-    if (path === "/api/v1/settings" && req.method === "GET") return settings(req, res);
+    if (path === "/api/license/revision") return json(res, 200, { service: "OrbitFS License Master", version: "2.0.0", authority: "master", components: COMPONENTS });
+    if (path === "/api/products" && req.method === "GET") return products(req, res);
+    if (path === "/api/settings" && req.method === "GET") return settings(req, res);
     const installationMatch = path.match(/^\/api\/v1\/installations(?:\/([^/]+))?$/);
     if (installationMatch) return installations(req, res, installationMatch[1] ? decodeURIComponent(installationMatch[1]) : undefined);
-    if (path === "/api/v1/license/validate" && req.method === "POST") return validate(req, res);
-    if (path === "/api/v1/license/issue" && req.method === "POST") return issue(req, res);
+    if (path === "/api/license/validate" && req.method === "POST") return validate(req, res);
+    if (path === "/api/license/issue" && req.method === "POST") return issue(req, res);
     if (path === "/api/admin/licenses/issue" && req.method === "POST") return adminIssue(req, res);
-    if (path === "/api/v1/licenses" && req.method === "GET") {
+    if (path === "/api/licenses" && req.method === "GET") {
       if (!allowed(req, ["master", "billing"])) return json(res, 401, { error: "Unauthorized" });
       return json(res, 200, { licenses: (await query<JsonObject>("select * from license_bindings where archived_at is null order by created_at desc limit 500")).rows.map(publicBinding) });
     }
+    if (path === "/api/admin-control-login" && req.method === "POST") return adminControlLogin(req, res);
+    if (path === "/api/auth/login" && req.method === "POST") return adminControlLogin(req, res);
     if (path === "/api/admin/me" && req.method === "GET") {
       const user = await requireAdmin(req);
       return json(res, 200, { user: { id: user.id, email: user.email } });
@@ -815,16 +855,16 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     if (adminControlMatch && req.method === "POST") return adminControl(req, res, decodeURIComponent(adminControlMatch[1]));
     const licenseControlMatch = path.match(/^\/api\/v1\/license\/([^/]+)\/control$/);
     if (licenseControlMatch && req.method === "POST") return control(req, res, decodeURIComponent(licenseControlMatch[1]));
-    if (path === "/api/v1/releases" && (req.method === "GET" || req.method === "POST")) return releases(req, res);
+    if (path === "/api/releases" && (req.method === "GET" || req.method === "POST")) return releases(req, res);
     const releaseMatch = path.match(/^\/api\/v1\/releases\/([^/]+)\/(artifact|validate|publish|pause|paused|withdraw|withdrawn|control)$/);
     if (releaseMatch && req.method === "POST") {
       const action = releaseMatch[2] === "artifact" ? null : releaseMatch[2] === "control" ? String((await body(req)).action || "") : releaseMatch[2];
       if (releaseMatch[2] === "artifact") return artifact(req, res, decodeURIComponent(releaseMatch[1]));
       return releaseAction(req, res, decodeURIComponent(releaseMatch[1]), action || "");
     }
-    if (path === "/api/v1/releases/latest" && req.method === "GET") return latest(req, res);
-    if (path === "/api/v1/deployments/execute" && req.method === "POST") return executeDeployment(req, res);
-    if (path === "/api/v1/deployments/sync" && req.method === "POST") return syncDeployment(req, res);
+    if (path === "/api/releases/latest" && req.method === "GET") return latest(req, res);
+    if (path === "/api/deployments/execute" && req.method === "POST") return executeDeployment(req, res);
+    if (path === "/api/deployments/sync" && req.method === "POST") return syncDeployment(req, res);
     const deploymentMatch = path.match(/^\/api\/v1\/deployments(?:\/([^/]+))?$/);
     if (deploymentMatch) return deployments(req, res, deploymentMatch[1] ? decodeURIComponent(deploymentMatch[1]) : undefined);
     return json(res, 404, { error: "Not found" });

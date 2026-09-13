@@ -43,9 +43,9 @@ async function settings(req: IncomingMessage, res: ServerResponse) {
 '''
 if needle not in s: raise SystemExit('function insertion point not found')
 s = s.replace(needle, insert + needle, 1)
-needle2 = '    if (path === "/api/v1/license/revision") return json(res, 200, { service: "OrbitFS License Master", version: "2.0.0", authority: "master", components: COMPONENTS });\n'
-routes = '''    if (path === "/api/v1/products" && req.method === "GET") return products(req, res);
-    if (path === "/api/v1/settings" && req.method === "GET") return settings(req, res);
+needle2 = '    if (path === "/api/license/revision") return json(res, 200, { service: "OrbitFS License Master", version: "2.0.0", authority: "master", components: COMPONENTS });\n'
+routes = '''    if (path === "/api/products" && req.method === "GET") return products(req, res);
+    if (path === "/api/settings" && req.method === "GET") return settings(req, res);
     const installationMatch = path.match(/^\\/api\\/v1\\/installations(?:\\/([^/]+))?$/);
     if (installationMatch) return installations(req, res, installationMatch[1] ? decodeURIComponent(installationMatch[1]) : undefined);
 '''

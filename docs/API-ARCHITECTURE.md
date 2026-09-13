@@ -66,7 +66,7 @@ Canonical public API base:
 
 `https://incendiarynetworks.cc/api`
 
-All public/caller-facing API endpoints use `/api/*`. The legacy `/api/v1/*` implementation may remain internal for compatibility, but clients MUST use the canonical `/api/*` contract.
+All public/caller-facing API endpoints use `/api/*`. The legacy `/api/*` implementation may remain internal for compatibility, but clients MUST use the canonical `/api/*` contract.
 
 ### Public/runtime
 

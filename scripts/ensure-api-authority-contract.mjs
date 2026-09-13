@@ -36,16 +36,16 @@ for (const file of [
 const adminFile = "api/admin-extended.ts";
 let adminSource = readFileSync(adminFile, "utf8");
 adminSource = adminSource.replaceAll('"http://localhost"', 'process.env.SITE_URL || ""');
-adminSource = adminSource.replaceAll('new URL(req.url || "/", "http://localhost")', 'new URL(req.url || "/", process.env.SITE_URL || "https://example.invalid")');
-adminSource = adminSource.replaceAll('process.env.SITE_URL||"https://orbitfs.cc"', 'process.env.SITE_URL || ""');
-adminSource = adminSource.replaceAll('process.env.SITE_URL || "https://orbitfs.cc"', 'process.env.SITE_URL || ""');
+adminSource = adminSource.replaceAll('new URL(req.url || "/", process.env.SITE_URL || "https://example.invalid")', 'new URL(req.url || "/", process.env.SITE_URL || "https://example.invalid")');
+adminSource = adminSource.replaceAll('process.env.SITE_URL||""', 'process.env.SITE_URL || ""');
+adminSource = adminSource.replaceAll('process.env.SITE_URL || ""', 'process.env.SITE_URL || ""');
 writeFileSync(adminFile, adminSource);
 
 for (const file of ["api/products.ts", "api/release-control.ts"]) {
   let source = readFileSync(file, "utf8");
   source = source.replaceAll('"http://localhost"', 'process.env.SITE_URL || ""');
-  source = source.replaceAll('process.env.SITE_URL||"https://orbitfs.cc"', 'process.env.SITE_URL || ""');
-  source = source.replaceAll('process.env.SITE_URL || "https://orbitfs.cc"', 'process.env.SITE_URL || ""');
+  source = source.replaceAll('process.env.SITE_URL||""', 'process.env.SITE_URL || ""');
+  source = source.replaceAll('process.env.SITE_URL || ""', 'process.env.SITE_URL || ""');
   writeFileSync(file, source);
 }
 
@@ -80,8 +80,8 @@ let uiSource = readFileSync(uiFile, "utf8");
 uiSource = uiSource.replaceAll("ext('settings')", "api('/api/admin-settings')");
 uiSource = uiSource.replaceAll("https://incendiarynetworks.cc/api", "/api");
 uiSource = uiSource.replaceAll("https://incendiarynetworks.cc", "");
-uiSource = uiSource.replaceAll("https://orbitfs.cc/api", "/api");
-uiSource = uiSource.replaceAll("https://orbitfs.cc", "");
+uiSource = uiSource.replaceAll("/api", "/api");
+uiSource = uiSource.replaceAll("", "");
 uiSource = uiSource.replaceAll("/api/v1", "/api");
 uiSource = uiSource.replaceAll("V1-vercel-base · release-updates", "V1-vercel-base · base-release");
 uiSource = uiSource.replaceAll("V1-vercel-base / release-updates", "V1-vercel-base / base-release");
@@ -93,8 +93,8 @@ const controlUi = "web/admin-control.html";
 let controlSource = readFileSync(controlUi, "utf8");
 controlSource = controlSource.replaceAll("https://incendiarynetworks.cc/api", "/api");
 controlSource = controlSource.replaceAll("https://incendiarynetworks.cc", "");
-controlSource = controlSource.replaceAll("https://orbitfs.cc/api", "/api");
-controlSource = controlSource.replaceAll("https://orbitfs.cc", "");
+controlSource = controlSource.replaceAll("/api", "/api");
+controlSource = controlSource.replaceAll("", "");
 controlSource = controlSource.replaceAll("/api/v1", "/api");
 controlSource = controlSource.replaceAll("ext('settings')", "fetch('/api/admin-settings',{headers:{authorization:'Bearer '+sessionStorage.getItem('orbitfs_admin_access_token')}}).then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Unable to load settings');return d})");
 // Never expose a GitHub token or read the wrong repository/branch from the browser.
@@ -106,7 +106,7 @@ const envFile = ".env.example";
 let env = readFileSync(envFile, "utf8");
 env = env.replaceAll("https://incendiarynetworks.cc", "")
   .replaceAll("https://www.orbitfs.cc", "")
-  .replaceAll("https://orbitfs.cc", "");
+  .replaceAll("", "");
 env = env.split("\n").filter(line => !/^RELEASE_(BASE|UPDATE)_/.test(line)).join("\n");
 writeFileSync(envFile, env);
 
