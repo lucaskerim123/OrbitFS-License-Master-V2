@@ -2,23 +2,6 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-function legacyPath(pathname: string): string {
-  const exact = new Map<string,string>([
-    ["/api/products","/api/v1/products"],["/api/settings","/api/v1/settings"],["/api/licenses","/api/v1/licenses"],
-    ["/api/license/validate","/api/v1/license/validate"],["/api/license/issue","/api/v1/license/issue"],
-    ["/api/license/revision","/api/v1/license/revision"],["/api/license/public-key","/api/v1/license/public-key"],
-    ["/api/releases","/api/v1/releases"],["/api/releases/latest","/api/v1/releases/latest"],
-    ["/api/installations","/api/v1/installations"],["/api/deployments","/api/v1/deployments"],
-    ["/api/deployments/execute","/api/v1/deployments/execute"],["/api/deployments/sync","/api/v1/deployments/sync"],
-  ]);
-  if (exact.has(pathname)) return exact.get(pathname)!;
-  if (pathname.startsWith("/api/license/") && pathname.endsWith("/control")) return `/api/v1${pathname.slice(4)}`;
-  if (pathname.startsWith("/api/releases/")) return `/api/v1${pathname.slice(4)}`;
-  if (pathname.startsWith("/api/installations/")) return `/api/v1${pathname.slice(4)}`;
-  if (pathname.startsWith("/api/deployments/")) return `/api/v1${pathname.slice(4)}`;
-  return pathname;
-}
-
 const sendJson = (res: ServerResponse, status: number, value: unknown) => {
   res.statusCode = status;
   res.setHeader("content-type", "application/json; charset=utf-8");
@@ -43,7 +26,6 @@ const apiIndex = (res: ServerResponse) => sendJson(res, 200, {
   },
   endpoints: {
     products: `${apiBase}/products`,
-    settings: `${apiBase}/settings`,
     licenses: `${apiBase}/licenses`,
     licenseIssue: `${apiBase}/license/issue`,
     licenseValidate: `${apiBase}/license/validate`,
@@ -55,6 +37,7 @@ const apiIndex = (res: ServerResponse) => sendJson(res, 200, {
     deployments: `${apiBase}/deployments`,
     executeDeployment: `${apiBase}/deployments/execute`,
     syncDeployments: `${apiBase}/deployments/sync`,
+    billingHandshake: `${apiBase}/billing`,
     admin: `${apiBase}/admin`,
   },
 });
@@ -70,6 +53,7 @@ export default async function api(req: IncomingMessage, res: ServerResponse) {
       const html = readFileSync(new URL("../web/admin-control.html", import.meta.url), "utf8");
       res.statusCode=200;res.setHeader("content-type","text/html; charset=utf-8");res.setHeader("cache-control","no-store, max-age=0");return res.end(html);
     }
+    if (pathname === "/api/billing") { const {default:x}=await import("./billing.js"); return x(req,res); }
     if (pathname === "/api/admin-products-ui") {const {default:x}=await import("./admin-products-ui.js");return x(req,res);}
     if (pathname === "/api/admin-control-ui") {const {default:x}=await import("./admin-control-ui.js");return x(req,res);}
     if (pathname === "/api/admin-control-login" || pathname === "/api/auth/login") {const {default:x}=await import("./admin-control-login.js");return x(req,res);}
@@ -78,9 +62,10 @@ export default async function api(req: IncomingMessage, res: ServerResponse) {
     if (pathname === "/api/release-capture") {const {default:x}=await import("./release-capture.js");return x(req,res);}
     if (pathname === "/api/release-control") {const {default:x}=await import("./release-control.js");return x(req,res);}
 
-    // Public callers use the canonical /api contract. Existing V2 business
-    // logic remains the authority internally, so there is no second backend.
-    const internalPath = legacyPath(pathname);
+    // The public contract is canonical /api/*. The current V2 server keeps
+    // its internal handlers versioned; this adapter is the only compatibility
+    // boundary and must never be exposed as a client-facing API.
+    const internalPath = pathname.replace(/^\/api\//, "/api/v1/");
     const originalUrl=req.url;
     req.url=internalPath+(rawUrl.includes("?")?rawUrl.slice(rawUrl.indexOf("?")):"");
     const {handler}=await import("../src/server.js");
