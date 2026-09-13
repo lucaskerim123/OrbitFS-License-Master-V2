@@ -1,0 +1,99 @@
+name: Canonical API cleanup
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  canonical-api:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Canonicalize License Master API
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              if p.exists():
+                  s = p.read_text()
+                  n = s.replace(old, new)
+                  if n != s:
+                      p.write_text(n)
+
+          # The License Master public contract is /api/*, never /api/v1/*.
+          for name in ["src/server.ts", "api/[...path].ts", "api/admin-control-ui.ts", "web/admin.html", "web/admin-control.html"]:
+              replace(name, "/api/v1/", "/api/")
+
+          # Never hard-code the License Master hostname in API code.
+          p = Path("api/admin-extended.ts")
+          if p.exists():
+              s = p.read_text()
+              s = s.replace('const GITHUB_TOKEN = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "";', 'const GITHUB_TOKEN = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "";\nconst SITE_URL = String(process.env.SITE_URL || "").replace(/\\/$/, "");\nconst RELEASE_BASE_REPOSITORY = String(process.env.RELEASE_BASE_REPOSITORY || "").trim();\nconst RELEASE_BASE_BRANCH = String(process.env.RELEASE_BASE_BRANCH || "").trim();\nconst RELEASE_UPDATE_REPOSITORY = String(process.env.RELEASE_UPDATE_REPOSITORY || "").trim();\nconst RELEASE_UPDATE_BRANCH = String(process.env.RELEASE_UPDATE_BRANCH || "").trim();')
+              s = s.replace('const base = kind === "base"; const repo = base ? "lucaskerim123/V1-vercel-base" : "lucaskerim123/V1-vercel-engine"; const branch = base ? "base-release" : "release-updates";', 'const base = kind === "base"; const repo = base ? RELEASE_BASE_REPOSITORY : RELEASE_UPDATE_REPOSITORY; const branch = base ? RELEASE_BASE_BRANCH : RELEASE_UPDATE_BRANCH;\n  if (!repo || !branch) throw new Error(`Release source configuration is missing for ${base ? "base" : "update"}`);')
+              s = s.replace('new URL(req.url || "/", "https://orbitfs.cc")', 'new URL(req.url || "/", SITE_URL || "https://orbitfs.cc")')
+              s = s.replace('new URL(req.url || "/", "http://localhost")', 'new URL(req.url || "/", SITE_URL || "https://orbitfs.cc")')
+              p.write_text(s)
+
+          p = Path("api/release-capture.ts")
+          if p.exists():
+              s = p.read_text()
+              s = s.replace('const GITHUB_TOKEN=process.env.GITHUB_TOKEN||process.env.GH_TOKEN||"";', 'const GITHUB_TOKEN=process.env.GITHUB_TOKEN||process.env.GH_TOKEN||"";\nconst RELEASE_BASE_REPOSITORY=String(process.env.RELEASE_BASE_REPOSITORY||"").trim();\nconst RELEASE_BASE_BRANCH=String(process.env.RELEASE_BASE_BRANCH||"").trim();\nconst RELEASE_UPDATE_REPOSITORY=String(process.env.RELEASE_UPDATE_REPOSITORY||"").trim();\nconst RELEASE_UPDATE_BRANCH=String(process.env.RELEASE_UPDATE_BRANCH||"").trim();')
+              s = s.replace('const repo=kind==="base"?"lucaskerim123/V1-vercel-base":"lucaskerim123/V1-vercel-engine";const branch=kind==="base"?"base-release":"release-updates";', 'const repo=kind==="base"?RELEASE_BASE_REPOSITORY:RELEASE_UPDATE_REPOSITORY;const branch=kind==="base"?RELEASE_BASE_BRANCH:RELEASE_UPDATE_BRANCH;if(!repo||!branch)throw new Error(`Release source configuration is missing for ${kind}`);')
+              s = s.replace('packageFormat:kind==="base"?"orbitfs-panel-release-v1":"orbitfs-engine-release-v1"', 'packageFormat:kind==="base"?"orbitfs-panel-release":"orbitfs-engine-release"')
+              p.write_text(s)
+
+          p = Path("api/products.ts")
+          if p.exists():
+              s = p.read_text().replace('const CORS = process.env.CORS_ORIGINS || "https://incendiarynetworks.cc,https://www.incendiarynetworks.cc";', 'const CORS = process.env.CORS_ORIGINS || "";')
+              p.write_text(s)
+
+          p = Path("api/admin.ts")
+          if p.exists():
+              s = p.read_text()
+              marker = 'export default function admin(_req: IncomingMessage, res: ServerResponse) {'
+              if marker in s and 'RELEASE_BASE_REPOSITORY' not in s:
+                  s = s.replace(marker, 'const RELEASE_BASE_REPOSITORY = String(process.env.RELEASE_BASE_REPOSITORY || "").trim();\nconst RELEASE_BASE_BRANCH = String(process.env.RELEASE_BASE_BRANCH || "").trim();\nconst RELEASE_UPDATE_REPOSITORY = String(process.env.RELEASE_UPDATE_REPOSITORY || "").trim();\nconst RELEASE_UPDATE_BRANCH = String(process.env.RELEASE_UPDATE_BRANCH || "").trim();\n\n' + marker)
+              s = s.replace("b.repo||'lucaskerim123/V1-vercel-base'", "b.repo||RELEASE_BASE_REPOSITORY")
+              s = s.replace("b.branch||'base-release'", "b.branch||RELEASE_BASE_BRANCH")
+              s = s.replace("u.repo||'lucaskerim123/V1-vercel-engine'", "u.repo||RELEASE_UPDATE_REPOSITORY")
+              s = s.replace("u.branch||'release-updates'", "u.branch||RELEASE_UPDATE_BRANCH")
+              p.write_text(s)
+
+          p = Path("api/admin-release-ui.ts")
+          if p.exists():
+              s = p.read_text()
+              marker = 'import type {IncomingMessage,ServerResponse} from "node:http";'
+              if marker in s and 'RELEASE_BASE_REPOSITORY' not in s:
+                  s = s.replace(marker, marker + '\nconst RELEASE_BASE_REPOSITORY=String(process.env.RELEASE_BASE_REPOSITORY||"").trim();\nconst RELEASE_BASE_BRANCH=String(process.env.RELEASE_BASE_BRANCH||"").trim();\nconst RELEASE_UPDATE_REPOSITORY=String(process.env.RELEASE_UPDATE_REPOSITORY||"").trim();\nconst RELEASE_UPDATE_BRANCH=String(process.env.RELEASE_UPDATE_BRANCH||"").trim();')
+              s = s.replace('lucaskerim123/V1-vercel-base · base-release', '${RELEASE_BASE_REPOSITORY} · ${RELEASE_BASE_BRANCH}')
+              s = s.replace('lucaskerim123/V1-vercel-engine · release-updates', '${RELEASE_UPDATE_REPOSITORY} · ${RELEASE_UPDATE_BRANCH}')
+              p.write_text(s)
+
+          p = Path(".env.example")
+          if p.exists():
+              s = p.read_text()
+              s = s.replace('SITE_URL=https://incendiarynetworks.cc', 'SITE_URL=https://orbitfs.cc')
+              s = s.replace('LICENSE_API_BASE_URL=https://incendiarynetworks.cc/api', 'LICENSE_API_BASE_URL=https://orbitfs.cc/api')
+              s = s.replace('CORS_ORIGINS=https://incendiarynetworks.cc,https://www.incendiarynetworks.cc,https://orbitfsstore.vercel.app', 'CORS_ORIGINS=https://orbitfs.cc,https://orbitfsstore.vercel.app')
+              if 'RELEASE_BASE_REPOSITORY=' not in s:
+                  s = s.replace('GITHUB_TOKEN=\n', 'GITHUB_TOKEN=\nRELEASE_BASE_REPOSITORY=\nRELEASE_BASE_BRANCH=\nRELEASE_UPDATE_REPOSITORY=\nRELEASE_UPDATE_BRANCH=\n')
+              p.write_text(s)
+          PY
+      - name: Verify
+        run: |
+          if grep -RInE '/api/v1|incendiarynetworks|V1-vercel|release-v1' api src web .env.example; then
+            echo "Legacy API/source references remain" >&2
+            exit 1
+          fi
+          npm run build
+      - name: Commit canonical API changes
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src api web .env.example
+          git commit -m "Make /api the canonical License Master API"
+          git push
