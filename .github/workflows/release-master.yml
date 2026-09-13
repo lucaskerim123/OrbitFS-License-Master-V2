@@ -45,14 +45,14 @@ jobs:
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             if [[ "${{ inputs.component }}" == "base" ]]; then
               echo "repo=lucaskerim123/V1-vercel-base" >> "$GITHUB_OUTPUT"
-              echo "branch=release-updates" >> "$GITHUB_OUTPUT"
+              echo "branch=base-release" >> "$GITHUB_OUTPUT"
             else
               echo "repo=lucaskerim123/V1-vercel-engine" >> "$GITHUB_OUTPUT"
               echo "branch=release-updates" >> "$GITHUB_OUTPUT"
             fi
           elif [[ "${{ github.event.action }}" == "orbitfs-base-release" ]]; then
             echo "repo=lucaskerim123/V1-vercel-base" >> "$GITHUB_OUTPUT"
-            echo "branch=release-updates" >> "$GITHUB_OUTPUT"
+            echo "branch=base-release" >> "$GITHUB_OUTPUT"
           else
             echo "repo=lucaskerim123/V1-vercel-engine" >> "$GITHUB_OUTPUT"
             echo "branch=release-updates" >> "$GITHUB_OUTPUT"
