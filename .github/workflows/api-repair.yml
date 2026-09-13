@@ -1,0 +1,68 @@
+name: Canonical API Repair
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Normalize API and runtime URLs
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          roots = [Path('api'), Path('src'), Path('web'), Path('tools'), Path('docs')]
+          for root in roots:
+              if not root.exists():
+                  continue
+              for p in root.rglob('*'):
+                  if not p.is_file() or any(x in p.parts for x in ('node_modules','.git','.next')):
+                      continue
+                  try:
+                      s = p.read_text()
+                  except Exception:
+                      continue
+                  ns = s.replace('/api/v1/', '/api/')
+                  ns = ns.replace('https://orbitfs.cc', '')
+                  ns = ns.replace('new URL(req.url||"/","http://localhost")', 'new URL(req.url||"/", process.env.SITE_URL || "https://example.invalid")')
+                  ns = ns.replace('new URL(req.url || "/", "http://localhost")', 'new URL(req.url || "/", process.env.SITE_URL || "https://example.invalid")')
+                  if ns != s:
+                      p.write_text(ns)
+          PY
+      - name: Enforce fixed release sources
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          for name in ['api/admin-extended.ts','api/release-capture.ts','scripts/ensure-api-authority-contract.mjs']:
+              p=Path(name)
+              if not p.exists(): continue
+              s=p.read_text()
+              s=s.replace('RELEASE_BASE_REPOSITORY', 'BASE_RELEASE_REPOSITORY')
+              s=s.replace('RELEASE_BASE_BRANCH', 'BASE_RELEASE_BRANCH')
+              s=s.replace('RELEASE_UPDATE_REPOSITORY', 'RELEASE_UPDATES_REPOSITORY')
+              s=s.replace('RELEASE_UPDATE_BRANCH', 'RELEASE_UPDATES_BRANCH')
+              p.write_text(s)
+          PY
+      - name: Verify canonical surface
+        run: |
+          if grep -RInE '/api/v[0-9]+/|https://orbitfs\.cc|http://localhost|127\.0\.0\.1' api src web tools --exclude-dir=node_modules --exclude-dir=.next; then exit 1; fi
+          grep -RIn 'V1-vercel-base' api web scripts
+          grep -RIn 'V1-vercel-engine' api web scripts
+      - name: Build
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build
+      - name: Commit repair
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add api src web tools docs scripts
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Fix canonical API and site URL routing'
+          git push
