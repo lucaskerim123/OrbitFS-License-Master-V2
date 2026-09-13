@@ -2,19 +2,14 @@ import { readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 /** Canonical /admin entry. The complete admin UI lives in web/admin.html. */
-const RELEASE_BASE_REPOSITORY = String(process.env.RELEASE_BASE_REPOSITORY || "").trim();
-const RELEASE_BASE_BRANCH = String(process.env.RELEASE_BASE_BRANCH || "").trim();
-const RELEASE_UPDATE_REPOSITORY = String(process.env.RELEASE_UPDATE_REPOSITORY || "").trim();
-const RELEASE_UPDATE_BRANCH = String(process.env.RELEASE_UPDATE_BRANCH || "").trim();
-
 export default function admin(_req: IncomingMessage, res: ServerResponse) {
   try {
     let html = readFileSync(new URL("../web/admin.html", import.meta.url), "utf8");
     html = html.replace("</body>", `<script>
 /* License Master control-plane corrections. */
-window.renderReleaseSources=function(){if($("baseSource"))$("baseSource").innerHTML='<b>Base deployment source</b><span><a href="${RELEASE_BASE_REPOSITORY}/tree/${RELEASE_BASE_BRANCH}" target="_blank" rel="noreferrer">${RELEASE_BASE_REPOSITORY}/tree/${RELEASE_BASE_BRANCH}</a></span>';if($("updateSource"))$("updateSource").innerHTML='<b>Update release source</b><span><a href="${RELEASE_UPDATE_REPOSITORY}/tree/${RELEASE_UPDATE_BRANCH}" target="_blank" rel="noreferrer">${RELEASE_UPDATE_REPOSITORY}/tree/${RELEASE_UPDATE_BRANCH}</a></span>'};
-window.sourceBranch=function(mode){return mode==='base'?RELEASE_BASE_BRANCH:RELEASE_UPDATE_BRANCH};
-window.loadReleaseSources=async function(){releaseSources.base={repo:RELEASE_BASE_REPOSITORY,branch:RELEASE_BASE_BRANCH,url:`${RELEASE_BASE_REPOSITORY}/tree/${RELEASE_BASE_BRANCH}`};releaseSources.update={repo:RELEASE_UPDATE_REPOSITORY,branch:RELEASE_UPDATE_BRANCH,url:`${RELEASE_UPDATE_REPOSITORY}/tree/${RELEASE_UPDATE_BRANCH}`};renderReleaseSources();};
+window.renderReleaseSources=function(){if($("baseSource"))$("baseSource").innerHTML='<b>Base deployment source</b><span><a href="https://github.com/lucaskerim123/V1-vercel-base/tree/base-release" target="_blank" rel="noreferrer">https://github.com/lucaskerim123/V1-vercel-base/tree/base-release</a></span>';if($("updateSource"))$("updateSource").innerHTML='<b>Update release source</b><span><a href="https://github.com/lucaskerim123/V1-vercel-engine/tree/release-updates" target="_blank" rel="noreferrer">https://github.com/lucaskerim123/V1-vercel-engine/tree/release-updates</a></span>'};
+window.sourceBranch=function(mode){return mode==='base'?'base-release':'release-updates'};
+window.loadReleaseSources=async function(){releaseSources.base={repo:'lucaskerim123/V1-vercel-base',branch:'base-release',url:'https://github.com/lucaskerim123/V1-vercel-base/tree/base-release'};releaseSources.update={repo:'lucaskerim123/V1-vercel-engine',branch:'release-updates',url:'https://github.com/lucaskerim123/V1-vercel-engine/tree/release-updates'};renderReleaseSources();};
 
 async function lmProductRequest(method,id,body){
   const url='/api/admin-extended?action=products'+(id?'&id='+encodeURIComponent(id):'');
@@ -37,7 +32,7 @@ function lmProductEditor(product){
 }
 window.lmClearProduct=function(){const old=document.getElementById('lmProductManager');if(old)old.replaceWith(lmProductEditor(null));};
 window.lmEditProduct=function(id){(async()=>{try{const d=await lmProductRequest('GET');const p=(d.products||[]).find(x=>x.id===id);if(!p)throw Error('Product not found');const old=document.getElementById('lmProductManager');if(old)old.replaceWith(lmProductEditor(p));}catch(e){toast(e.message,true)}})()};
-window.lmSaveProduct=async function(){try{const id=document.getElementById('lmProdId').value.trim();const input={id:id||undefined,code:document.getElementById('lmProdCode').value.trim(),name:document.getElementById('lmProdName').value.trim(),slug:document.getElementById('lmProdSlug').value.trim(),description:document.getElementById('lmProdDesc').value,product_type:document.getElementById('lmProdType').value,runtime:document.getElementById('lmProdRuntime').value.trim(),component_key:document.getElementById('lmProdComponent').value.trim()||null,price_amount:Number(document.getElementById('lmProdPrice').value||0),max_installations:Number(document.getElementById('lmProdMax').value||1),active:document.getElementById('lmProdActive').checked,purchasable:document.getElementById('lmProdPurchasable').checked};const d=await lmProductRequest(id?'PATCH':'POST',id||'',input);toast('Product saved');await loadAll();}catch(e){toast(e.message,true)}};
+window.lmSaveProduct=async function(){try{const id=document.getElementById('lmProdId').value.trim();const input={id:id||undefined,code:document.getElementById('lmProdCode').value.trim(),name:document.getElementById('lmProdName').value.trim(),slug:document.getElementById('lmProdSlug').value.trim(),description:document.getElementById('lmProdDesc').value,product_type:document.getElementById('lmProdType').value,runtime:document.getElementById('lmProdRuntime').value.trim(),component_key:document.getElementById('lmProdComponent').value.trim()||null,price_amount:Number(document.getElementById('lmProdPrice').value||0),max_installations:Number(document.getElementById('lmProdMax').value||1),active:document.getElementById('lmProdActive').checked,purchasable:document.getElementById('lmProdPurchasable').checked};await lmProductRequest(id?'PATCH':'POST',id||'',input);toast('Product saved');await loadAll();}catch(e){toast(e.message,true)}};
 window.lmDeleteProduct=async function(){try{const id=document.getElementById('lmProdId').value.trim();if(!id){lmClearProduct();return}if(!confirm('Delete this product from the License Master catalogue?'))return;await lmProductRequest('DELETE',id);toast('Product deleted');lmClearProduct();await loadAll();}catch(e){toast(e.message,true)}};
 
 function lmMountManagers(){
