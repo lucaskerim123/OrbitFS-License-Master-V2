@@ -1,113 +1,61 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 
-const replaceIn = (file, replacements) => {
-  let source = readFileSync(file, "utf8");
-  for (const [from, to] of replacements) source = source.replaceAll(from, to);
-  writeFileSync(file, source);
+const roots = ["api", "src", "web", "tools", "docs", "scripts"];
+const files = [];
+const walk = (dir) => {
+  if (!existsSync(dir)) return;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (["node_modules", ".next", ".git"].includes(entry.name)) continue;
+    const path = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) walk(path);
+    else files.push(path);
+  }
 };
+for (const root of roots) walk(root);
 
-// OrbitFS uses one canonical public API surface: /api/*.
-// Supabase's own /auth/v1/* paths are intentionally not touched.
-for (const file of [
-  "src/server.ts",
-  "api/[...path].ts",
-  "api/admin-control-ui.ts",
-  "api/admin-extended.ts",
-  "api/admin-release-ui.ts",
-  "api/admin.ts",
-  "api/admin-settings.ts",
-  "api/products.ts",
-  "api/release-capture.ts",
-  "api/release-control.ts",
-  "web/admin.html",
-  "web/admin-control.html",
-  "tools/api-layout-patch.py",
-  "tools/apply-product-api-patch.mjs",
-]) {
-  try {
-    let source = readFileSync(file, "utf8");
-    source = source.replace(/\/api\/v[0-9]+(?=\/|['"`)]|\b)/g, "/api");
-    writeFileSync(file, source);
-  } catch {}
+for (const file of files) {
+  let source;
+  try { source = readFileSync(file, "utf8"); } catch { continue; }
+  const next = source
+    .replaceAll("/api/v1/", "/api/")
+    .replaceAll("\\/api\\/v1", "\\/api")
+    .replaceAll('new URL(req.url||"/","http://localhost")', 'new URL(req.url||"/",process.env.SITE_URL||"https://example.invalid")')
+    .replaceAll('new URL(req.url || "/", "http://localhost")', 'new URL(req.url || "/", process.env.SITE_URL || "https://example.invalid")');
+  if (next !== source) writeFileSync(file, next);
 }
 
-// SITE_URL is the only Master site-origin setting. Never bake a deployment
-// hostname into source code or build scripts.
-const adminFile = "api/admin-extended.ts";
-let adminSource = readFileSync(adminFile, "utf8");
-adminSource = adminSource.replaceAll('"http://localhost"', 'process.env.SITE_URL || ""');
-adminSource = adminSource.replaceAll('new URL(req.url || "/", process.env.SITE_URL || "https://example.invalid")', 'new URL(req.url || "/", process.env.SITE_URL || "https://example.invalid")');
-adminSource = adminSource.replaceAll('process.env.SITE_URL||""', 'process.env.SITE_URL || ""');
-adminSource = adminSource.replaceAll('process.env.SITE_URL || ""', 'process.env.SITE_URL || ""');
-writeFileSync(adminFile, adminSource);
-
-for (const file of ["api/products.ts", "api/release-control.ts"]) {
-  let source = readFileSync(file, "utf8");
-  source = source.replaceAll('"http://localhost"', 'process.env.SITE_URL || ""');
-  source = source.replaceAll('process.env.SITE_URL||""', 'process.env.SITE_URL || ""');
-  source = source.replaceAll('process.env.SITE_URL || ""', 'process.env.SITE_URL || ""');
-  writeFileSync(file, source);
+const releaseUi = "web/admin.html";
+if (existsSync(releaseUi)) {
+  let source = readFileSync(releaseUi, "utf8");
+  source = source.replaceAll("V1-vercel-base / release-updates", "V1-vercel-base / base-release")
+    .replaceAll("V1-vercel-base · release-updates", "V1-vercel-base · base-release")
+    .replaceAll("Loading V1-vercel-base / release-updates", "Loading V1-vercel-base / base-release");
+  writeFileSync(releaseUi, source);
 }
 
-// These are the two authoritative release sources. They are intentionally
-// fixed and are not configurable through extra repository/branch variables.
-const releaseBase = "lucaskerim123/V1-vercel-base";
-const releaseBaseBranch = "base-release";
-const releaseUpdates = "lucaskerim123/V1-vercel-engine";
-const releaseUpdatesBranch = "release-updates";
+const releaseControl = "api/release-control.ts";
+if (existsSync(releaseControl)) {
+  let source = readFileSync(releaseControl, "utf8");
+  source = source.replaceAll("const input:Record<string,unknown>=await body(req);", "const input:Record<string,unknown>=await body(req) as Record<string,unknown>;");
+  writeFileSync(releaseControl, source);
+}
 
-const patchReleaseSource = (file) => {
-  let source = readFileSync(file, "utf8");
-  source = source.replace(/const RELEASE_BASE_REPOSITORY[^;]*;\n?/g, "")
-    .replace(/const RELEASE_BASE_BRANCH[^;]*;\n?/g, "")
-    .replace(/const RELEASE_UPDATE_REPOSITORY[^;]*;\n?/g, "")
-    .replace(/const RELEASE_UPDATE_BRANCH[^;]*;\n?/g, "");
-  source = source.replace(/const base = kind === "base"; const repo = base \? [^;]+; const branch = base \? [^;]+;/,
-    `const base = kind === "base"; const repo = base ? "${releaseBase}" : "${releaseUpdates}"; const branch = base ? "${releaseBaseBranch}" : "${releaseUpdatesBranch}";`);
-  source = source.replace(/const repo=kind==="base"\?[^;]+;const branch=kind==="base"\?[^;]+;/,
-    `const repo=kind==="base"?"${releaseBase}":"${releaseUpdates}";const branch=kind==="base"?"${releaseBaseBranch}":"${releaseUpdatesBranch}";`);
-  source = source.replaceAll("orbitfs-panel-release-v1", "orbitfs-panel-release")
-    .replaceAll("orbitfs-engine-release-v1", "orbitfs-engine-release");
-  writeFileSync(file, source);
-};
-patchReleaseSource("api/admin-extended.ts");
-patchReleaseSource("api/release-capture.ts");
+const server = "src/server.ts";
+if (existsSync(server)) {
+  let source = readFileSync(server, "utf8");
+  source = source
+    .replace('const installationMatch = path.match(/^\\/api\\/v1\\/installations(?:\\/([^/]+))?$/);', 'const installationMatch = path.match(/^\\/api\\/installations(?:\\/([^/]+))?$/);')
+    .replace('const licenseControlMatch = path.match(/^\\/api\\/v1\\/license\\/([^/]+)\\/control$/);', 'const licenseControlMatch = path.match(/^\\/api\\/license\\/([^/]+)\\/control$/);')
+    .replace('const releaseMatch = path.match(/^\\/api\\/v1\\/releases\\/([^/]+)\\/(artifact|validate|publish|pause|paused|withdraw|withdrawn|control)$/);', 'const releaseMatch = path.match(/^\\/api\\/releases\\/([^/]+)\\/(artifact|validate|publish|pause|paused|withdraw|withdrawn|control)$/);')
+    .replace('const deploymentMatch = path.match(/^\\/api\\/v1\\/deployments(?:\\/([^/]+))?$/);', 'const deploymentMatch = path.match(/^\\/api\\/deployments(?:\\/([^/]+))?$/);');
+  const projectCreate = '    if (!project) project = await vapi("/v11/projects", { method: "POST", body: JSON.stringify({ name: projectName, framework: "sveltekit" }) });';
+  if (source.includes(projectCreate) && !source.includes("const activeProject=project")) {
+    source = source.replace(projectCreate, `${projectCreate}\n    if (!project) throw new Error("Unable to create Vercel project");\n    const activeProject=project;`)
+      .replaceAll("encodeURIComponent(project.id)", "encodeURIComponent(activeProject.id)")
+      .replaceAll("name: project.name, project: project.id", "name: activeProject.name, project: activeProject.id")
+      .replaceAll("projectName: project.name", "projectName: activeProject.name");
+  }
+  writeFileSync(server, source);
+}
 
-// Browser UI uses its own origin for the public API. This avoids hardcoding
-// any deployment hostname and keeps SITE_URL an environment-level setting.
-const uiFile = "web/admin.html";
-let uiSource = readFileSync(uiFile, "utf8");
-uiSource = uiSource.replaceAll("ext('settings')", "api('/api/admin-settings')");
-uiSource = uiSource.replaceAll("https://incendiarynetworks.cc/api", "/api");
-uiSource = uiSource.replaceAll("https://incendiarynetworks.cc", "");
-uiSource = uiSource.replaceAll("/api", "/api");
-uiSource = uiSource.replaceAll("", "");
-uiSource = uiSource.replaceAll("/api/v1", "/api");
-uiSource = uiSource.replaceAll("V1-vercel-base · release-updates", "V1-vercel-base · base-release");
-uiSource = uiSource.replaceAll("V1-vercel-base / release-updates", "V1-vercel-base / base-release");
-uiSource = uiSource.replace("function sourceBranch(){return'release-updates'}", "function sourceBranch(mode){return mode==='base'?'base-release':'release-updates'}");
-uiSource = uiSource.replaceAll("sourceRepo(mode)+' / '+sourceBranch()", "sourceRepo(mode)+' / '+sourceBranch(mode)");
-writeFileSync(uiFile, uiSource);
-
-const controlUi = "web/admin-control.html";
-let controlSource = readFileSync(controlUi, "utf8");
-controlSource = controlSource.replaceAll("https://incendiarynetworks.cc/api", "/api");
-controlSource = controlSource.replaceAll("https://incendiarynetworks.cc", "");
-controlSource = controlSource.replaceAll("/api", "/api");
-controlSource = controlSource.replaceAll("", "");
-controlSource = controlSource.replaceAll("/api/v1", "/api");
-controlSource = controlSource.replaceAll("ext('settings')", "fetch('/api/admin-settings',{headers:{authorization:'Bearer '+sessionStorage.getItem('orbitfs_admin_access_token')}}).then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Unable to load settings');return d})");
-// Never expose a GitHub token or read the wrong repository/branch from the browser.
-controlSource = controlSource.replace(/async function loadReleaseSources\(\)\{.*?\n\}/s,
-  `async function loadReleaseSources(){try{const get=async kind=>{const r=await fetch('/api/admin-extended?action=releaseSource&kind='+encodeURIComponent(kind),{headers:{authorization:'Bearer '+sessionStorage.getItem('orbitfs_admin_access_token'),'x-release-kind':kind}});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Unable to read release source');return d.source};const [base,update]=await Promise.all([get('base'),get('update')]);$('releaseSources').innerHTML='<div class="source-chip"><b>Base / clean installation</b><span>'+esc(base.repo)+' · branch: '+esc(base.branch)+' · commit: '+esc(base.shortSha)+' · '+esc(base.message)+'</span></div><div class="source-chip"><b>Updates / existing installations</b><span>'+esc(update.repo)+' · branch: '+esc(update.branch)+' · commit: '+esc(update.shortSha)+' · '+esc(update.message)+'</span></div>';}catch(e){$('releaseSources').innerHTML='<div class="source-chip"><b>Release source unavailable</b><span>'+esc(e.message)+'</span></div>';}}`);
-writeFileSync(controlUi, controlSource);
-
-const envFile = ".env.example";
-let env = readFileSync(envFile, "utf8");
-env = env.replaceAll("https://incendiarynetworks.cc", "")
-  .replaceAll("https://www.orbitfs.cc", "")
-  .replaceAll("", "");
-env = env.split("\n").filter(line => !/^RELEASE_(BASE|UPDATE)_/.test(line)).join("\n");
-writeFileSync(envFile, env);
-
-console.log("OrbitFS License Master build contract enforced: canonical /api API, fixed release sources, SITE_URL-driven deployment origin, and dedicated settings endpoint");
+console.log("Canonical License Master API contract applied: SITE_URL + /api/*.");
