@@ -26,10 +26,13 @@ const sendJson = (res: ServerResponse, status: number, value: unknown) => {
   res.end(JSON.stringify(value));
 };
 
+const siteUrl = String(process.env.SITE_URL || "").replace(/\/$/, "");
+const apiBase = siteUrl ? `${siteUrl}/api` : "/api";
+
 const apiIndex = (res: ServerResponse) => sendJson(res, 200, {
   ok: true,
   service: "OrbitFS License Master V2",
-  api: "/api",
+  api: apiBase,
   authority: "license-master",
   database: Boolean(process.env.DATABASE_URL),
   services: {
@@ -39,20 +42,20 @@ const apiIndex = (res: ServerResponse) => sendJson(res, 200, {
     signing: Boolean(process.env.LICENSE_ENTITLEMENT_PRIVATE_KEY_B64 || process.env.ENTITLEMENT_PRIVATE_KEY_B64),
   },
   endpoints: {
-    products: "/api/products",
-    settings: "/api/settings",
-    licenses: "/api/licenses",
-    licenseIssue: "/api/license/issue",
-    licenseValidate: "/api/license/validate",
-    licenseRevision: "/api/license/revision",
-    licensePublicKey: "/api/license/public-key",
-    releases: "/api/releases",
-    latestRelease: "/api/releases/latest",
-    installations: "/api/installations",
-    deployments: "/api/deployments",
-    executeDeployment: "/api/deployments/execute",
-    syncDeployments: "/api/deployments/sync",
-    admin: "/api/admin",
+    products: `${apiBase}/products`,
+    settings: `${apiBase}/settings`,
+    licenses: `${apiBase}/licenses`,
+    licenseIssue: `${apiBase}/license/issue`,
+    licenseValidate: `${apiBase}/license/validate`,
+    licenseRevision: `${apiBase}/license/revision`,
+    licensePublicKey: `${apiBase}/license/public-key`,
+    releases: `${apiBase}/releases`,
+    latestRelease: `${apiBase}/releases/latest`,
+    installations: `${apiBase}/installations`,
+    deployments: `${apiBase}/deployments`,
+    executeDeployment: `${apiBase}/deployments/execute`,
+    syncDeployments: `${apiBase}/deployments/sync`,
+    admin: `${apiBase}/admin`,
   },
 });
 
