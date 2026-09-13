@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "tsx src/dev.ts",
     "build": "tsc --noEmit --noCheck && echo OrbitFS-License-Master build completed",
-    "start": "node dist/server.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": { "pg": "^8.23.0" },
