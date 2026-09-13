@@ -1,71 +1,95 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
-const file = "src/server.ts";
-let source = readFileSync(file, "utf8");
-// /api is the only public License Master API contract.
-source = source.replace(/\/api\/v[0-9]+\//g, "/api/");
-const oldBlock = `async function settings(req: IncomingMessage, res: ServerResponse) {
-  if (allowed(req, ["master"])) return json(res, 401, { error: "Unauthorized" });
-  if (req.method !== "GET") return json(res, 405, { error: "Method not allowed" });`;
-const oldBlock2 = `async function settings(req: IncomingMessage, res: ServerResponse) {
-  if (!allowed(req, ["master"])) return json(res, 401, { error: "Unauthorized" });
-  if (req.method !== "GET") return json(res, 405, { error: "Method not allowed" });`;
-const newBlock = `async function settings(req: IncomingMessage, res: ServerResponse) {
-  if (req.method === "GET") {
-    if (!allowed(req, ["master", "billing", "deployer"])) return json(res, 401, { error: "Unauthorized" });
-  } else if (!allowed(req, ["master"])) {
-    return json(res, 401, { error: "Unauthorized" });
-  }
-  if (req.method !== "GET") return json(res, 405, { error: "Method not allowed" });`;
-if (source.includes(oldBlock)) {
-  source = source.replace(oldBlock, newBlock, 1);
-} else if (source.includes(oldBlock2)) {
-  source = source.replace(oldBlock2, newBlock, 1);
-} else if (!source.includes('if (req.method === "GET") {\n    if (!allowed(req, ["master", "billing", "deployer"]))')) {
-  throw new Error("License Master settings authority contract not found");
+const replaceIn = (file, replacements) => {
+  let source = readFileSync(file, "utf8");
+  for (const [from, to] of replacements) source = source.replaceAll(from, to);
+  writeFileSync(file, source);
+};
+
+// OrbitFS uses one canonical public API surface: /api/*.
+// Supabase's own /auth/v1/* paths are intentionally not touched.
+for (const file of [
+  "src/server.ts",
+  "api/[...path].ts",
+  "api/admin-control-ui.ts",
+  "api/admin-extended.ts",
+  "api/admin-release-ui.ts",
+  "api/admin.ts",
+  "api/admin-settings.ts",
+  "api/products.ts",
+  "api/release-capture.ts",
+  "api/release-control.ts",
+  "web/admin.html",
+  "web/admin-control.html",
+  "tools/api-layout-patch.py",
+  "tools/apply-product-api-patch.mjs",
+]) {
+  try { replaceIn(file, [["/api/v1/", "/api/"]]); } catch {}
 }
-writeFileSync(file, source);
 
 const adminFile = "api/admin-extended.ts";
 let adminSource = readFileSync(adminFile, "utf8");
-if (!adminSource.includes("const settingsDb =")) {
-  if (!adminSource.includes('import { Pool } from "pg";')) {
-    adminSource = adminSource.replace(
-      'import type { IncomingMessage, ServerResponse } from "node:http";',
-      'import type { IncomingMessage, ServerResponse } from "node:http";\nimport { Pool } from "pg";'
-    );
-  }
-  const insert = `const SETTINGS_DATABASE_URL = String(process.env.DATABASE_URL || "").replace(/[?&]sslmode=[^&]+/i, "");\nconst settingsDb = SETTINGS_DATABASE_URL ? new Pool({ connectionString: SETTINGS_DATABASE_URL, max: 3, ssl: { rejectUnauthorized: false } }) : null;`;
-  const marker = 'const adminEmails = new Set((process.env.ADMIN_EMAILS || "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean));';
-  if (adminSource.includes(marker)) {
-    adminSource = adminSource.replace(marker, `${marker}\n${insert}`, 1);
-  } else {
-    const match = adminSource.match(/const adminEmails\s*=.*?;\n/);
-    if (!match || match.index === undefined) throw new Error("License Master admin authentication source not found; cannot establish settings database transport safely");
-    const at = match.index + match[0].length;
-    adminSource = `${adminSource.slice(0, at)}${insert}\n${adminSource.slice(at)}`;
-  }
-}
-if (!adminSource.includes("async function settingsAction(req: IncomingMessage, res: ServerResponse)")) throw new Error("License Master admin settings handler not found");
-if (!adminSource.includes("master_license_settings")) throw new Error("License Master admin settings database contract not found");
+adminSource = adminSource.replaceAll('"http://localhost"', 'process.env.SITE_URL||"https://orbitfs.cc"');
+adminSource = adminSource.replaceAll('new URL(req.url || "/", "http://localhost")', 'new URL(req.url || "/", process.env.SITE_URL || "https://orbitfs.cc")');
 writeFileSync(adminFile, adminSource);
 
-const uiFile = "api/admin.ts";
+for (const file of ["api/products.ts", "api/release-control.ts"]) {
+  let source = readFileSync(file, "utf8");
+  source = source.replaceAll('"http://localhost"', 'process.env.SITE_URL||"https://orbitfs.cc"');
+  writeFileSync(file, source);
+}
+
+// The two release sources are fixed authoritative sources; no repository/branch
+// environment variables are required.
+const releaseBase = "lucaskerim123/V1-vercel-base";
+const releaseBaseBranch = "base-release";
+const releaseUpdates = "lucaskerim123/V1-vercel-engine";
+const releaseUpdatesBranch = "release-updates";
+
+const patchReleaseSource = (file) => {
+  let source = readFileSync(file, "utf8");
+  source = source.replace(/const RELEASE_BASE_REPOSITORY[^;]*;\n?/g, "")
+    .replace(/const RELEASE_BASE_BRANCH[^;]*;\n?/g, "")
+    .replace(/const RELEASE_UPDATE_REPOSITORY[^;]*;\n?/g, "")
+    .replace(/const RELEASE_UPDATE_BRANCH[^;]*;\n?/g, "");
+  source = source.replace(/const SITE_URL[^;]*;\n?/g, "");
+  source = source.replace(/const base = kind === "base"; const repo = base \? [^;]+; const branch = base \? [^;]+;/,
+    `const base = kind === "base"; const repo = base ? "${releaseBase}" : "${releaseUpdates}"; const branch = base ? "${releaseBaseBranch}" : "${releaseUpdatesBranch}";`);
+  source = source.replace(/const repo=kind==="base"\?[^;]+;const branch=kind==="base"\?[^;]+;/,
+    `const repo=kind==="base"?"${releaseBase}":"${releaseUpdates}";const branch=kind==="base"?"${releaseBaseBranch}":"${releaseUpdatesBranch}";`);
+  source = source.replaceAll("orbitfs-panel-release-v1", "orbitfs-panel-release")
+    .replaceAll("orbitfs-engine-release-v1", "orbitfs-engine-release");
+  writeFileSync(file, source);
+};
+patchReleaseSource("api/admin-extended.ts");
+patchReleaseSource("api/release-capture.ts");
+
+const uiFile = "web/admin.html";
 let uiSource = readFileSync(uiFile, "utf8");
-uiSource = uiSource.replaceAll("/api/admin-extended?action=settings", "/api/admin-settings");
-
-const mainUiFile = "web/admin.html";
-let mainUiSource = readFileSync(mainUiFile, "utf8");
-mainUiSource = mainUiSource.replaceAll("ext('settings')", "api('/api/admin-settings')");
-writeFileSync(mainUiFile, mainUiSource);
-
-const releaseBaseRepo = String(process.env.RELEASE_BASE_REPOSITORY || "").trim();
-const releaseBaseBranch = String(process.env.RELEASE_BASE_BRANCH || "").trim();
-const releaseUpdateRepo = String(process.env.RELEASE_UPDATE_REPOSITORY || "").trim();
-const releaseUpdateBranch = String(process.env.RELEASE_UPDATE_BRANCH || "").trim();
-const sourceDisplay = `window.renderReleaseSources=function(){if($("baseSource"))$("baseSource").innerHTML='<b>Base deployment source</b><span>'+esc(${JSON.stringify(releaseBaseRepo)}+' / '+${JSON.stringify(releaseBaseBranch)})+'</span>';if($("updateSource"))$("updateSource").innerHTML='<b>Update release source</b><span>'+esc(${JSON.stringify(releaseUpdateRepo)}+' / '+${JSON.stringify(releaseUpdateBranch)})+'</span>'};`;
-uiSource = uiSource.replace(/window\.renderReleaseSources=function\(\)\{.*?\};\nwindow\.sourceBranch/s, `${sourceDisplay}\nwindow.sourceBranch`);
-uiSource = uiSource.replace(/window\.loadReleaseSources=async function\(\)\{.*?\n\};/s, `window.loadReleaseSources=async function(){releaseSources.base={repo:${JSON.stringify(releaseBaseRepo)},branch:${JSON.stringify(releaseBaseBranch)},url:${JSON.stringify(releaseBaseRepo ? `${releaseBaseRepo}/tree/${releaseBaseBranch}` : '')}};releaseSources.update={repo:${JSON.stringify(releaseUpdateRepo)},branch:${JSON.stringify(releaseUpdateBranch)},url:${JSON.stringify(releaseUpdateRepo ? `${releaseUpdateRepo}/tree/${releaseUpdateBranch}` : '')}};renderReleaseSources();};`);
+uiSource = uiSource.replaceAll("ext('settings')", "api('/api/admin-settings')");
+uiSource = uiSource.replaceAll("incendiarynetworks.cc", "orbitfs.cc");
+uiSource = uiSource.replaceAll("V1-vercel-base · release-updates", "V1-vercel-base · base-release");
+uiSource = uiSource.replaceAll("V1-vercel-base / release-updates", "V1-vercel-base / base-release");
+uiSource = uiSource.replace("function sourceBranch(){return'release-updates'}", "function sourceBranch(mode){return mode==='base'?'base-release':'release-updates'}");
+uiSource = uiSource.replaceAll("sourceRepo(mode)+' / '+sourceBranch()", "sourceRepo(mode)+' / '+sourceBranch(mode)");
 writeFileSync(uiFile, uiSource);
 
-console.log("License Master authority contract fixed: dedicated API settings endpoint, canonical release sources, and billing/deployer-readable master settings");
+const controlUi = "web/admin-control.html";
+let controlSource = readFileSync(controlUi, "utf8");
+controlSource = controlSource.replaceAll("incendiarynetworks.cc", "orbitfs.cc");
+controlSource = controlSource.replaceAll("/api/v1", "/api");
+controlSource = controlSource.replaceAll("ext('settings')", "fetch('/api/admin-settings',{headers:{authorization:'Bearer '+sessionStorage.getItem('orbitfs_admin_access_token')}}).then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Unable to load settings');return d})");
+// Never expose a GitHub token or read the wrong repository/branch from the browser.
+controlSource = controlSource.replace(/async function loadReleaseSources\(\)\{.*?\n\}/s,
+  `async function loadReleaseSources(){try{const get=async kind=>{const r=await fetch('/api/admin-extended?action=releaseSource&kind='+encodeURIComponent(kind),{headers:{authorization:'Bearer '+sessionStorage.getItem('orbitfs_admin_access_token'),'x-release-kind':kind}});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Unable to read release source');return d.source};const [base,update]=await Promise.all([get('base'),get('update')]);$('releaseSources').innerHTML='<div class="source-chip"><b>Base / clean installation</b><span>'+esc(base.repo)+' · branch: '+esc(base.branch)+' · commit: '+esc(base.shortSha)+' · '+esc(base.message)+'</span></div><div class="source-chip"><b>Updates / existing installations</b><span>'+esc(update.repo)+' · branch: '+esc(update.branch)+' · commit: '+esc(update.shortSha)+' · '+esc(update.message)+'</span></div>';}catch(e){$('releaseSources').innerHTML='<div class="source-chip"><b>Release source unavailable</b><span>'+esc(e.message)+'</span></div>';}}`);
+writeFileSync(controlUi, controlSource);
+
+const envFile = ".env.example";
+let env = readFileSync(envFile, "utf8");
+env = env.replaceAll("https://incendiarynetworks.cc", "https://orbitfs.cc")
+  .replaceAll("https://www.orbitfs.cc", "https://orbitfs.cc")
+  .replace(/LICENSE_API_BASE_URL=.*/g, "LICENSE_API_BASE_URL=https://orbitfs.cc/api");
+env = env.split("\n").filter(line => !/^RELEASE_(BASE|UPDATE)_/.test(line)).join("\n");
+writeFileSync(envFile, env);
+
+console.log("OrbitFS License Master build contract enforced: canonical /api API, fixed release sources, production URL, and dedicated settings endpoint");
