@@ -22,7 +22,7 @@ const adminControlLogin = async (req: IncomingMessage, res: ServerResponse) => {
     const email = String(input.email || "").trim().toLowerCase();
     const password = String(input.password || "");
     if (!email || !password) return json(res, 400, { error: "Email and password are required" });
-    const tokenResponse = await fetch(\`${SUPABASE_URL}/auth/v1/token?grant_type=password\`, {
+    const tokenResponse = await fetch(SUPABASE_URL + "/auth/v1/token?grant_type=password", {
       method: "POST",
       headers: { apikey: SUPABASE_ANON_KEY, "content-type": "application/json" },
       body: JSON.stringify({ email, password }),
@@ -30,8 +30,8 @@ const adminControlLogin = async (req: IncomingMessage, res: ServerResponse) => {
     const tokenData = await tokenResponse.json().catch(() => ({})) as JsonObject;
     const accessToken = typeof tokenData.access_token === "string" ? tokenData.access_token : "";
     if (!tokenResponse.ok || !accessToken) return json(res, 401, { error: String(tokenData.error_description || tokenData.msg || "Authentication failed") });
-    const userResponse = await fetch(\`${SUPABASE_URL}/auth/v1/user\`, {
-      headers: { apikey: SUPABASE_ANON_KEY, authorization: \`Bearer \${accessToken}\` },
+    const userResponse = await fetch(SUPABASE_URL + "/auth/v1/user", {
+      headers: { apikey: SUPABASE_ANON_KEY, authorization: "Bearer " + accessToken },
     });
     if (!userResponse.ok) return json(res, 401, { error: "Unable to verify administrator account" });
     const user = await userResponse.json() as JsonObject;
