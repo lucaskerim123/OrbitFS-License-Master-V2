@@ -7,6 +7,8 @@ export default function admin(_req: IncomingMessage, res: ServerResponse) {
     let html = readFileSync(new URL("../web/admin.html", import.meta.url), "utf8");
     html = html.replace("</body>", `<script>
 /* License Master control-plane corrections. */
+window.renderReleaseSources=function(){const b=releaseSources.base,u=releaseSources.update;if(b)$('baseSource').innerHTML='<b>Base deployment source</b><span>'+esc(b.repo||'lucaskerim123/V1-vercel-base')+' / '+esc(b.branch||'base-release')+' · '+esc(b.shortSha)+' · '+esc(b.message)+'</span>';if(u)$('updateSource').innerHTML='<b>Update release source</b><span>'+esc(u.repo||'lucaskerim123/V1-vercel-engine')+' / '+esc(u.branch||'release-updates')+' · '+esc(u.shortSha)+' · '+esc(u.message)+'</span>'};
+window.sourceBranch=function(mode){return mode==='base'?'base-release':'release-updates'};
 window.loadReleaseSources=async function(){
   try{
     const get=async kind=>{const r=await fetch('/api/admin-extended?action=releaseSource&kind='+encodeURIComponent(kind),{headers:{authorization:'Bearer '+token,'x-release-kind':kind}});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Unable to read release source');return d.source};
