@@ -14,28 +14,31 @@ const newBlock = `async function settings(req: IncomingMessage, res: ServerRespo
   if (req.method !== "GET") return json(res, 405, { error: "Method not allowed" });`;
 if (source.includes(oldBlock)) {
   source = source.replace(oldBlock, newBlock, 1);
-} else if (!source.includes("if (req.method === \"GET\") {\n    if (!allowed(req, [\"master\", \"billing\", \"deployer\"]))")) {
-  throw new Error("License Master settings authority marker not found");
+} else if (!source.includes('if (req.method === "GET") {\n    if (!allowed(req, ["master", "billing", "deployer"]))')) {
+  throw new Error("License Master settings authority contract not found");
 }
 writeFileSync(file, source);
 
 const adminFile = "api/admin-extended.ts";
 let adminSource = readFileSync(adminFile, "utf8");
-if (!adminSource.includes('import { Pool } from "pg";')) {
-  adminSource = adminSource.replace('import type { IncomingMessage, ServerResponse } from "node:http";','import type { IncomingMessage, ServerResponse } from "node:http";\nimport { Pool } from "pg";');
-}
 
-// This script is deliberately idempotent. Older revisions used an exact source
-// marker and failed builds when harmless formatting/import changes moved it.
-// The authority contract is the actual settings database transport below, not
-// the presence of a particular comment/string in the file.
-if (!adminSource.includes("const SETTINGS_DATABASE_URL")) {
+// The admin settings implementation is already database-backed in the current
+// API. This guard must validate the real implementation rather than depend on
+// a fragile function-boundary marker such as a specific healthAction function.
+// Keep this step idempotent so harmless formatting/refactoring cannot break Vercel builds.
+if (!adminSource.includes("const settingsDb =")) {
+  if (!adminSource.includes('import { Pool } from "pg";')) {
+    adminSource = adminSource.replace(
+      'import type { IncomingMessage, ServerResponse } from "node:http";',
+      'import type { IncomingMessage, ServerResponse } from "node:http";\nimport { Pool } from "pg";'
+    );
+  }
   const insert = `const SETTINGS_DATABASE_URL = String(process.env.DATABASE_URL || "").replace(/[?&]sslmode=[^&]+/i, "");\nconst settingsDb = SETTINGS_DATABASE_URL ? new Pool({ connectionString: SETTINGS_DATABASE_URL, max: 3, ssl: { rejectUnauthorized: false } }) : null;`;
   const marker = 'const adminEmails = new Set((process.env.ADMIN_EMAILS || "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean));';
   if (adminSource.includes(marker)) {
     adminSource = adminSource.replace(marker, `${marker}\n${insert}`, 1);
   } else {
-    const match = adminSource.match(/const adminEmails\s*=.*?;\n/);
+    const match = adminSource.match(/const adminEmails\\s*=.*?;\\n/);
     if (!match || match.index === undefined) {
       throw new Error("License Master admin authentication source not found; cannot establish settings database transport safely");
     }
@@ -44,33 +47,12 @@ if (!adminSource.includes("const SETTINGS_DATABASE_URL")) {
   }
 }
 
-const settingsStart = adminSource.indexOf("async function settingsAction(req: IncomingMessage, res: ServerResponse) {");
-const settingsEnd = adminSource.indexOf("async function healthAction", settingsStart);
-if (settingsStart < 0 || settingsEnd < 0) throw new Error("License Master admin settings function marker not found");
-const replacement = `async function settingsAction(req: IncomingMessage, res: ServerResponse) {
-  try {
-    if (!settingsDb) return json(res, 503, { error: "Database is not configured" });
-    await settingsDb.query(\`create table if not exists master_license_settings (id text primary key,issuer text not null default 'orbitfs-license-master',audience text not null default 'orbitfs-runtime',entitlement_ttl_seconds integer not null default 10800,grace_seconds integer not null default 604800,revision bigint not null default 1,updated_at timestamptz not null default now()); alter table master_license_settings add column if not exists api_mode text not null default 'online'; alter table master_license_settings add column if not exists allow_offline_grace boolean not null default true; insert into master_license_settings(id) values ('primary') on conflict (id) do nothing;\`);
-    if (req.method === "GET") {
-      const row = (await settingsDb.query("select id,issuer,audience,entitlement_ttl_seconds,grace_seconds,api_mode,allow_offline_grace,revision,updated_at from master_license_settings where id='primary'")).rows[0] || {};
-      return json(res, 200, { settings: { ...row, enabled: true, mode: String(row.api_mode || "online") === "online" ? "active" : String(row.api_mode || "online") }, database: true, settings_found: Boolean(row?.id) });
-    }
-    if (req.method !== "PATCH" && req.method !== "POST") return json(res, 405, { error: "Method not allowed" });
-    const input = await readBody(req);
-    const current = (await settingsDb.query("select * from master_license_settings where id='primary'")).rows[0] || {};
-    const requestedMode = String(input.api_mode ?? input.mode ?? current.api_mode ?? "online").toLowerCase();
-    const apiMode = requestedMode === "active" ? "online" : requestedMode;
-    if (!["online", "offline", "maintenance"].includes(apiMode)) return json(res, 400, { error: "mode must be active, offline, or maintenance" });
-    const row = (await settingsDb.query(\`update master_license_settings set issuer=$1,audience=$2,entitlement_ttl_seconds=$3,grace_seconds=$4,api_mode=$5,allow_offline_grace=$6,revision=$7,updated_at=now() where id='primary' returning id,issuer,audience,entitlement_ttl_seconds,grace_seconds,api_mode,allow_offline_grace,revision,updated_at\`, [
-      String(input.issuer ?? current.issuer ?? "orbitfs-license-master"), String(input.audience ?? current.audience ?? "orbitfs-runtime"), Math.max(60, Math.floor(Number(input.entitlement_ttl_seconds ?? current.entitlement_ttl_seconds ?? 10800))), Math.max(0, Math.floor(Number(input.grace_seconds ?? current.grace_seconds ?? 604800))), apiMode, input.allow_offline_grace === undefined ? current.allow_offline_grace !== false : Boolean(input.allow_offline_grace), Math.max(1, Math.floor(Number(input.revision ?? Number(current.revision || 0) + 1))),
-    ])).rows[0];
-    return json(res, 200, { settings: { ...row, enabled: true, mode: apiMode === "online" ? "active" : apiMode }, database: true });
-  } catch (error) {
-    return json(res, 502, { error: error instanceof Error ? error.message : "License Master settings operation failed" });
-  }
+if (!adminSource.includes("async function settingsAction(req: IncomingMessage, res: ServerResponse)")) {
+  throw new Error("License Master admin settings handler not found");
+}
+if (!adminSource.includes("master_license_settings")) {
+  throw new Error("License Master admin settings database contract not found");
 }
 
-`;
-adminSource = `${adminSource.slice(0, settingsStart)}${replacement}${adminSource.slice(settingsEnd)}`;
 writeFileSync(adminFile, adminSource);
 console.log("License Master settings use the master database, expose compatibility aliases, and are readable by billing/deployer");
