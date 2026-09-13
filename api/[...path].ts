@@ -43,14 +43,6 @@ const apiIndex = (res: ServerResponse) => sendJson(res, 200, {
   },
 });
 
-const canonicalAdminPath = (pathname: string) =>
-  pathname === "/api/admin/me" ||
-  pathname === "/api/setup/status" ||
-  pathname === "/api/setup/admin" ||
-  pathname === "/api/admin/licenses" ||
-  pathname === "/api/admin/releases" ||
-  /^\/api\/admin\/licenses\/[^/]+\/control$/.test(pathname);
-
 export default async function api(req: IncomingMessage, res: ServerResponse) {
   try {
     const rawPath = String(req.url || "/").split("?")[0];
@@ -59,7 +51,6 @@ export default async function api(req: IncomingMessage, res: ServerResponse) {
       const html = readFileSync(new URL("../web/admin-control.html", import.meta.url), "utf8");
       res.statusCode = 200;res.setHeader("content-type", "text/html; charset=utf-8");res.setHeader("cache-control", "no-store, max-age=0");return res.end(html);
     }
-    if (pathname === "/api/products") { const { default: products } = await import("./products.js"); return products(req, res); }
     if (pathname === "/api/admin-products-ui") {const { default: productsUi } = await import("./admin-products-ui.js");return productsUi(req, res);}
     if (pathname === "/api/admin-control-ui") {const { default: adminControlUi } = await import("./admin-control-ui.js");return adminControlUi(req, res);}
     if (pathname === "/api/admin-control-login" || pathname === "/api/auth/login") {const { default: adminControlLogin } = await import("./admin-control-login.js");return adminControlLogin(req, res);}
