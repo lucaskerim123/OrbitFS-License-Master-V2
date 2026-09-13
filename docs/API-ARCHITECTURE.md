@@ -58,27 +58,31 @@ It asks License Master whether a customer/installation is entitled to a release 
 
 ## API groups
 
-Base URL in production:
+Canonical production License Master site:
+
+`https://incendiarynetworks.cc`
+
+Canonical public API base:
 
 `https://incendiarynetworks.cc/api`
 
-Canonical versioned License API prefix:
-
-`/api/license/v1`
+All public/caller-facing API endpoints use `/api/*`. The legacy `/api/v1/*` implementation may remain internal for compatibility, but clients MUST use the canonical `/api/*` contract.
 
 ### Public/runtime
 
-- `GET /api/license/v1/health`
-- `POST /api/license/v1/register`
-- `POST /api/license/v1/activate`
-- `POST /api/license/v1/validate`
-- `GET /api/license/v1/revision`
-- `GET /api/license/v1/releases`
-- `GET /api/license/v1/releases/:releaseId`
+- `GET /api/license/health`
+- `POST /api/license/register`
+- `POST /api/license/activate`
+- `POST /api/license/validate`
+- `GET /api/license/revision`
+- `GET /api/releases`
+- `GET /api/releases/:releaseId`
 
 Runtime endpoints return only the information required by the authenticated customer installation. License keys are never returned after initial issuance except through an explicitly authorised delivery operation.
 
 ### Billing service
+
+The Billing Store public origin is configured separately as `BILLING_SITE_URL=https://orbitfsstore.vercel.app`. This variable is a site origin only; it is not an API base.
 
 Authenticated service-to-service access for the Billing Store:
 
@@ -90,7 +94,7 @@ Authenticated service-to-service access for the Billing Store:
 - installation lookup
 - release eligibility
 
-The Billing Store uses its dedicated `BILLING_API_TOKEN` and is not given the master administrative token.
+The Billing Store calls the License API at `{SITE_URL}/api/{endpoint}` using its dedicated `BILLING_API_TOKEN` and is not given the master administrative token.
 
 ### Deployment service
 
@@ -118,65 +122,3 @@ Products are data, not hard-coded application branches. Each product can define:
 - whether an Engine is required
 - installation limit
 - licence duration/expiry/grace policy
-- release channel policy
-- version/update policy
-- price/billing metadata
-- feature flags
-- entitlement defaults
-- arbitrary product metadata
-
-Current canonical components:
-
-```text
-orbitfs_base   -> panel
-orbitfs_mcp    -> engine
-orbitfs_apex   -> engine
-orbitfs_studio -> engine
-```
-
-Future add-ons must use this metadata rather than adding another hard-coded component list.
-
-## Licence vs installation vs deployment
-
-These are deliberately separate:
-
-**Licence:** commercial entitlement granted to a customer.
-
-**Installation:** an authorised runtime identity consuming that licence. Installation limits and activation live here.
-
-**Deployment:** where/how that installation is hosted, including Vercel project, URL, deployed release, health and deployment history.
-
-A deployment may change without creating a new commercial licence. An installation may be repaired/redeployed without changing entitlement.
-
-## Release authority
-
-Release metadata belongs to the License API's release model when it affects licensing eligibility. Build artifacts may remain in private release storage owned by the Store/release system. The artifact location is an implementation detail; the License API remains authoritative for eligibility.
-
-Eligibility is evaluated from:
-
-```text
-customer status
-+ licence status
-+ product entitlement
-+ installation status
-+ release channel
-+ allowed version range/policy
-+ suspension/termination rules
-```
-
-## Security rules
-
-1. Customer products never connect directly to License Master PostgreSQL.
-2. Billing Store never directly writes License Master licensing tables.
-3. Service tokens are server-side only.
-4. Runtime validation responses contain no private administrative data.
-5. Installation IDs are stable identifiers, not secrets.
-6. Licence keys are stored hashed; plaintext delivery is limited to controlled issuance/reissue flows.
-7. Every state-changing licensing operation is audited.
-8. Suspended/terminated customers are rejected before entitlement data is issued.
-9. Release downloads require an eligibility check; knowing an artifact URL is insufficient.
-10. Database credentials, signing private keys, Vercel tokens, and Supabase service-role keys are never stored in normal installation records.
-
-## Why this architecture fits OrbitFS
-
-It prevents the Billing Store, customer products, and deployment automation from implementing three slightly different versions of licensing rules. They all consume one contract. This also lets the Store UI and customer products evolve independently while preserving one authoritative licence state.
