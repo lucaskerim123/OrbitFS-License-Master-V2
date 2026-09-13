@@ -8,6 +8,7 @@
     "api/**/*.ts": { "maxDuration": 10, "includeFiles": "web/admin-control.html" }
   },
   "rewrites": [
+    { "source": "/api/admin-control-login", "destination": "/api/auth/login" },
     { "source": "/admin", "destination": "/api/admin" },
     { "source": "/admin/", "destination": "/api/admin" },
     { "source": "/admin/releases", "destination": "/api/admin-release-ui" },
