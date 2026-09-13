@@ -55,6 +55,14 @@ const uiFile = "api/admin.ts";
 let uiSource = readFileSync(uiFile, "utf8");
 uiSource = uiSource.replaceAll("/api/admin-extended?action=settings", "/api/admin-settings");
 
+// The canonical Admin page also loads settings through ext('settings'). Point
+// that one load directly at the dedicated Vercel function; otherwise the page
+// still receives the catch-all 404 even though the injected controls are fixed.
+const mainUiFile = "web/admin.html";
+let mainUiSource = readFileSync(mainUiFile, "utf8");
+mainUiSource = mainUiSource.replaceAll("ext('settings')", "api('/api/admin-settings')");
+writeFileSync(mainUiFile, mainUiSource);
+
 // Release source display is canonical and must never be inferred from a release row.
 // Base deploys only from V1-vercel-base/base-release; updates only from V1-vercel-engine/release-updates.
 const sourceDisplay = `window.renderReleaseSources=function(){if($("baseSource"))$("baseSource").innerHTML='<b>Base deployment source</b><span><a href="https://github.com/lucaskerim123/V1-vercel-base/tree/base-release" target="_blank" rel="noreferrer">https://github.com/lucaskerim123/V1-vercel-base/tree/base-release</a></span>';if($("updateSource"))$("updateSource").innerHTML='<b>Update release source</b><span><a href="https://github.com/lucaskerim123/V1-vercel-engine/tree/release-updates" target="_blank" rel="noreferrer">https://github.com/lucaskerim123/V1-vercel-engine/tree/release-updates</a></span>'};`;
