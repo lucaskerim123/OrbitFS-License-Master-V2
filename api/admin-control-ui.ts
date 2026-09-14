@@ -4,14 +4,17 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 export default function adminControlUi(_req: IncomingMessage, res: ServerResponse) {
   try {
     let html = readFileSync(new URL("../web/admin-control.html", import.meta.url), "utf8");
-    html = html.replace(
-      '<input id="grace" type="number">',
-      '<input id="grace" type="number"><div class="actions"><button class="btn primary" id="saveApiSettings" type="button">Save API Settings</button></div><p id="apiSettingsStatus" class="small"></p>',
-    );
-    html = html.replace(
-      "</body>",
-      `<script>
+    html = html.replace('<input id="grace" type="number">','<input id="grace" type="number"><div class="actions"><button class="btn primary" id="saveApiSettings" type="button">Save API Settings</button></div><p id="apiSettingsStatus" class="small"></p>');
+    html = html.replace("</body>", `<script>
 (function(){
+  const nativeFetch=window.fetch.bind(window);
+  window.fetch=function(input,init){
+    try{
+      const url=typeof input==='string'?input:(input&&input.url)||'';
+      if(new URL(url,location.origin).pathname==='/api/admin/licenses')return nativeFetch('/api/admin-extended?action=licenses',init);
+    }catch(_e){}
+    return nativeFetch(input,init);
+  };
   const save=document.getElementById('saveApiSettings');
   if(!save)return;
   save.addEventListener('click',async function(){
@@ -21,12 +24,7 @@ export default function adminControlUi(_req: IncomingMessage, res: ServerRespons
       if(!token)throw new Error('Administrator session has expired. Please sign in again.');
       save.disabled=true;
       if(status)status.textContent='Saving API settings…';
-      const body={
-        issuer:(document.getElementById('issuer')||{}).value.trim(),
-        audience:(document.getElementById('audience')||{}).value.trim(),
-        entitlement_ttl_seconds:Number((document.getElementById('ttl')||{}).value),
-        grace_seconds:Number((document.getElementById('grace')||{}).value)
-      };
+      const body={issuer:(document.getElementById('issuer')||{}).value.trim(),audience:(document.getElementById('audience')||{}).value.trim(),entitlement_ttl_seconds:Number((document.getElementById('ttl')||{}).value),grace_seconds:Number((document.getElementById('grace')||{}).value)};
       const r=await fetch('/api/admin-extended?action=settings',{method:'PATCH',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify(body)});
       const d=await r.json().catch(()=>({}));
       if(!r.ok)throw new Error(d.error||'Unable to save API settings');
@@ -38,8 +36,7 @@ export default function adminControlUi(_req: IncomingMessage, res: ServerRespons
     }catch(e){if(status)status.textContent=e.message||String(e);}finally{save.disabled=false;}
   });
 })();
-</script></body>`,
-    );
+</script></body>`);
     res.statusCode = 200;
     res.setHeader("content-type", "text/html; charset=utf-8");
     res.setHeader("cache-control", "no-store, max-age=0");
