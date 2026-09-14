@@ -7,7 +7,7 @@
     "api/**/*.ts": { "maxDuration": 10, "includeFiles": "web/admin-control.html" }
   },
   "routes": [
-    { "src": "/admin/?$", "dest": "/api/admin-control-ui" },
+    { "src": "/admin/?$", "dest": "/api/admin" },
     { "handle": "filesystem" }
   ]
 }
