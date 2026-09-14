@@ -1,16 +1,21 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
-// The admin console is served at /admin. Its authentication and data APIs stay
-// under /api; the browser must never be redirected to an API UI endpoint.
+// Keep the admin console at /admin. Authentication and data APIs remain under /api.
 const file = "src/server.ts";
 let source = readFileSync(file, "utf8");
-const redirect = /const adminPage = \(\) => \{[\s\S]*?\n\};/;
-const replacement = `const adminPage = () => {
+const adminPage = `const adminPage = () => {
   const html = readFileSync(new URL("../web/admin.html", import.meta.url), "utf8");
   return html.replace("__SUPABASE_URL__", JSON.stringify(SUPABASE_URL)).replace("__SUPABASE_ANON_KEY__", JSON.stringify(SUPABASE_ANON_KEY));
-};`;
-if (!redirect.test(source)) throw new Error("adminPage definition not found");
-source = source.replace(redirect, replacement);
+};\n\n`;
+const definition = /const adminPage = \(\) => \{[\s\S]*?\n\};/;
+if (definition.test(source)) {
+  source = source.replace(definition, adminPage.trimEnd());
+} else {
+  const marker = "const adminControlLogin = async";
+  const markerIndex = source.indexOf(marker);
+  if (markerIndex === -1) throw new Error("Admin route insertion point not found");
+  source = source.slice(0, markerIndex) + adminPage + source.slice(markerIndex);
+}
 writeFileSync(file, source);
 
 const publicAdmin = "public/admin/index.html";
