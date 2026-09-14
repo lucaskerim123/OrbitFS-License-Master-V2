@@ -26,10 +26,12 @@ async function isAdmin(req: IncomingMessage) {
   if (!t) return false;
   if (MASTER && t === MASTER) return true;
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
-  const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SUPABASE_ANON_KEY, authorization: `Bearer ${t}` } });
-  if (!r.ok) return false;
-  const u = await r.json() as { email?: string; app_metadata?: { role?: string } };
-  return adminEmails.has(String(u.email || "").toLowerCase()) || u.app_metadata?.role === "admin";
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SUPABASE_ANON_KEY, authorization: `Bearer ${t}` } });
+    if (!r.ok) return false;
+    const u = await r.json() as { email?: string; app_metadata?: { role?: string } };
+    return adminEmails.has(String(u.email || "").toLowerCase()) || u.app_metadata?.role === "admin";
+  } catch { return false; }
 }
 
 async function ensureSettingsTable() {
@@ -86,6 +88,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     if (action === "settings") return settingsAction(req, res);
     if (action === "health") return json(res, 200, { ok: true, database: true, settings_found: true, settings: await getSettingsForHealth(), api: "License Master V2", services: { billing: Boolean(BILLING), deployer: Boolean(DEPLOYER) }, endpoints: { base: "/api", billing: { products: "/api/products", issue: "/api/license/issue", validate: "/api/license/validate", releases: "/api/releases" }, deployer: { releases: "/api/releases", installations: "/api/installations", deployments: "/api/deployments", execute: "/api/deployments/execute", sync: "/api/deployments/sync" }, updater: { releases: "/api/releases", revision: "/api/license/revision" } } });
     if (action === "releaseSource") { const kind = String(req.headers["x-release-kind"] || url.searchParams.get("kind") || "update").toLowerCase() === "base" ? "base" : "update"; return json(res, 200, { source: await releaseSource(kind) }); }
+    if (action === "licenses") {
+      if (!db) return json(res, 503, { error: "Database is not configured" });
+      const rows = (await db.query("select * from license_bindings where archived_at is null order by created_at desc limit 500")).rows;
+      return json(res, 200, { licenses: rows.map((row) => { const item = { ...row } as Record<string, unknown>; delete item.license_key_hash; delete item.license_key_last4; return item; }) });
+    }
     if (action === "products") return proxy(req, res, "/api/products");
     if (action === "releases" || action === "releaseCreate") return proxy(req, res, "/api/releases");
     if (action === "releasePublish") return proxy(req, res, `/api/releases/${encodeURIComponent(id)}/publish`);
