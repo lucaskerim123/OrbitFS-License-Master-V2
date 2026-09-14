@@ -9,13 +9,7 @@ for (const file of files) {
 
 const serverFile = "src/server.ts";
 let server = readFileSync(serverFile, "utf8");
-const adminPageStart = "const adminPage = () => {";
-const adminPageEnd = "\n};\n\n\n// ORBITFS_ADMIN_CONTROL_LOGIN_PATCH";
-const adminPageIndex = server.indexOf(adminPageStart);
-const adminPageEndIndex = adminPageIndex >= 0 ? server.indexOf(adminPageEnd, adminPageIndex) : -1;
-if (adminPageIndex >= 0 && adminPageEndIndex >= 0) {
-  server = server.slice(0, adminPageIndex) + 'const adminPage = () => \'<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=/api/admin-control-ui"><script>location.replace("/api/admin-control-ui")</script>\';' + server.slice(adminPageEndIndex + 4);
-}
+server = server.replace(/const adminPage = \(\) => \{[\s\S]*?\n\};/, 'const adminPage = () => \'<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=/api/admin-control-ui"><script>location.replace("/api/admin-control-ui")</script>\';');
 
 const marker = "// ORBITFS_ADMIN_CONTROL_LOGIN_PATCH";
 if (!server.includes(marker)) {
@@ -38,22 +32,14 @@ const adminControlLogin = async (req: IncomingMessage, res: ServerResponse) => {
     const tokenData = await tokenResponse.json().catch(() => ({})) as JsonObject;
     const accessToken = typeof tokenData.access_token === "string" ? tokenData.access_token : "";
     if (!tokenResponse.ok || !accessToken) return json(res, 401, { error: String(tokenData.error_description || tokenData.msg || "Authentication failed") });
-    const userResponse = await fetch(SUPABASE_URL + "/auth/v1/user", {
-      headers: { apikey: SUPABASE_ANON_KEY, authorization: "Bearer " + accessToken },
-    });
+    const userResponse = await fetch(SUPABASE_URL + "/auth/v1/user", { headers: { apikey: SUPABASE_ANON_KEY, authorization: "Bearer " + accessToken } });
     if (!userResponse.ok) return json(res, 401, { error: "Unable to verify administrator account" });
     const user = await userResponse.json() as JsonObject;
     const metadata = user.app_metadata && typeof user.app_metadata === "object" ? user.app_metadata as JsonObject : {};
     const userEmail = String(user.email || email).toLowerCase();
     if (!adminEmails.has(userEmail) && metadata.role !== "admin") return json(res, 403, { error: "Administrator access is required" });
-    return json(res, 200, {
-      access_token: accessToken,
-      expires_in: Number(tokenData.expires_in || 0),
-      user: { id: String(user.id || ""), email: String(user.email || email) },
-    });
-  } catch (error) {
-    return json(res, 400, { error: error instanceof Error ? error.message : "Authentication failed" });
-  }
+    return json(res, 200, { access_token: accessToken, expires_in: Number(tokenData.expires_in || 0), user: { id: String(user.id || ""), email: String(user.email || email) } });
+  } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : "Authentication failed" }); }
 };
 
 `;
