@@ -3,7 +3,43 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 export default function adminControlUi(_req: IncomingMessage, res: ServerResponse) {
   try {
-    const html = readFileSync(new URL("../web/admin-control.html", import.meta.url), "utf8");
+    let html = readFileSync(new URL("../web/admin-control.html", import.meta.url), "utf8");
+    html = html.replace(
+      '<input id="grace" type="number">',
+      '<input id="grace" type="number"><div class="actions"><button class="btn primary" id="saveApiSettings" type="button">Save API Settings</button></div><p id="apiSettingsStatus" class="small"></p>',
+    );
+    html = html.replace(
+      "</body>",
+      `<script>
+(function(){
+  const save=document.getElementById('saveApiSettings');
+  if(!save)return;
+  save.addEventListener('click',async function(){
+    const token=sessionStorage.getItem('orbitfs_admin_access_token')||'';
+    const status=document.getElementById('apiSettingsStatus');
+    try{
+      if(!token)throw new Error('Administrator session has expired. Please sign in again.');
+      save.disabled=true;
+      if(status)status.textContent='Saving API settings…';
+      const body={
+        issuer:(document.getElementById('issuer')||{}).value.trim(),
+        audience:(document.getElementById('audience')||{}).value.trim(),
+        entitlement_ttl_seconds:Number((document.getElementById('ttl')||{}).value),
+        grace_seconds:Number((document.getElementById('grace')||{}).value)
+      };
+      const r=await fetch('/api/admin-extended?action=settings',{method:'PATCH',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify(body)});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.error||'Unable to save API settings');
+      const s=d.settings||{};
+      if(document.getElementById('ttl'))document.getElementById('ttl').value=s.entitlement_ttl_seconds||'';
+      if(document.getElementById('grace'))document.getElementById('grace').value=s.grace_seconds||'';
+      if(status)status.textContent='Saved to License Master database. Revision '+String(s.revision||'—')+'.';
+      if(typeof window.loadSettings==='function')await window.loadSettings();
+    }catch(e){if(status)status.textContent=e.message||String(e);}finally{save.disabled=false;}
+  });
+})();
+</script></body>`,
+    );
     res.statusCode = 200;
     res.setHeader("content-type", "text/html; charset=utf-8");
     res.setHeader("cache-control", "no-store, max-age=0");
