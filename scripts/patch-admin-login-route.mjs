@@ -9,9 +9,13 @@ for (const file of files) {
 
 const serverFile = "src/server.ts";
 let server = readFileSync(serverFile, "utf8");
-const adminPageOld = 'const html = readFileSync(new URL("../web/admin.html", import.meta.url), "utf8");';
-const adminPageNew = 'const html = readFileSync(new URL("../web/admin-control.html", import.meta.url), "utf8");';
-if (server.includes(adminPageOld)) server = server.replace(adminPageOld, adminPageNew);
+const adminPageStart = "const adminPage = () => {";
+const adminPageEnd = "\n};\n\n\n// ORBITFS_ADMIN_CONTROL_LOGIN_PATCH";
+const adminPageIndex = server.indexOf(adminPageStart);
+const adminPageEndIndex = adminPageIndex >= 0 ? server.indexOf(adminPageEnd, adminPageIndex) : -1;
+if (adminPageIndex >= 0 && adminPageEndIndex >= 0) {
+  server = server.slice(0, adminPageIndex) + 'const adminPage = () => \'<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=/api/admin-control-ui"><script>location.replace("/api/admin-control-ui")</script>\';' + server.slice(adminPageEndIndex + 4);
+}
 
 const marker = "// ORBITFS_ADMIN_CONTROL_LOGIN_PATCH";
 if (!server.includes(marker)) {
