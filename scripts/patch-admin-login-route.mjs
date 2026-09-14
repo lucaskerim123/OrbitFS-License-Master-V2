@@ -9,6 +9,10 @@ for (const file of files) {
 
 const serverFile = "src/server.ts";
 let server = readFileSync(serverFile, "utf8");
+const adminPageOld = 'const html = readFileSync(new URL("../web/admin.html", import.meta.url), "utf8");';
+const adminPageNew = 'const html = readFileSync(new URL("../web/admin-control.html", import.meta.url), "utf8");';
+if (server.includes(adminPageOld)) server = server.replace(adminPageOld, adminPageNew);
+
 const marker = "// ORBITFS_ADMIN_CONTROL_LOGIN_PATCH";
 if (!server.includes(marker)) {
   const handlerMarker = "export async function handler(req: IncomingMessage, res: ServerResponse) {";
@@ -55,5 +59,5 @@ const adminControlLogin = async (req: IncomingMessage, res: ServerResponse) => {
   const route = 'if (path === "/api/admin-control-login" && req.method === "POST") return adminControlLogin(req, res);\n    if (path === "/api/auth/login" && req.method === "POST") return adminControlLogin(req, res);\n    ';
   if (!server.includes(routeMarker)) throw new Error("Admin route insertion marker not found");
   server = server.replace(routeMarker, route + routeMarker);
-  writeFileSync(serverFile, server);
 }
+writeFileSync(serverFile, server);
