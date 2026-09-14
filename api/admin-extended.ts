@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Pool } from "pg";
+import { siteUrlBase } from "./_site-url.js";
 
 const DATABASE_URL = String(process.env.DATABASE_URL || "").replace(/[?&]sslmode=[^&]+/i, "");
 const db = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, max: 3, ssl: { rejectUnauthorized: false } }) : null;
@@ -9,7 +10,6 @@ const MASTER = process.env.MASTER_API_TOKEN || "";
 const BILLING = process.env.BILLING_API_TOKEN || "";
 const DEPLOYER = process.env.DEPLOYER_API_TOKEN || "";
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "";
-const SITE_URL = String(process.env.SITE_URL || "").replace(/\/$/, "");
 const RELEASE_BASE_REPOSITORY = "lucaskerim123/V1-vercel-base";
 const RELEASE_BASE_BRANCH = "base-release";
 const RELEASE_UPDATE_REPOSITORY = "lucaskerim123/V1-vercel-engine";
@@ -82,8 +82,7 @@ async function proxy(req: IncomingMessage, res: ServerResponse, target: string) 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   if (req.method === "OPTIONS") { res.statusCode = 204; return res.end(); }
   if (!(await isAdmin(req))) return json(res, 401, { error: "Administrator authentication is required" });
-  if (!SITE_URL) return json(res, 500, { error: "SITE_URL is not configured" });
-  const url = new URL(req.url || "/", SITE_URL); const action = url.searchParams.get("action") || ""; const id = url.searchParams.get("id") || "";
+  const url = new URL(req.url || "/", siteUrlBase()); const action = url.searchParams.get("action") || ""; const id = url.searchParams.get("id") || "";
   try {
     if (action === "settings") return settingsAction(req, res);
     if (action === "health") return json(res, 200, { ok: true, database: true, settings_found: true, settings: await getSettingsForHealth(), api: "License Master V2", services: { billing: Boolean(BILLING), deployer: Boolean(DEPLOYER) }, endpoints: { base: "/api", billing: { products: "/api/products", issue: "/api/license/issue", validate: "/api/license/validate", releases: "/api/releases" }, deployer: { releases: "/api/releases", installations: "/api/installations", deployments: "/api/deployments", execute: "/api/deployments/execute", sync: "/api/deployments/sync" }, updater: { releases: "/api/releases", revision: "/api/license/revision" } } });
