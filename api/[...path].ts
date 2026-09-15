@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { AuthorityError, bodyOf, health, issueLicense, publicSigningPem, revision, validateLicense } from "../src/new-api-authority.js";
+import { AuthorityError, bodyOf, health, issueLicense, publicSigningPem, requireAdmin, revision, validateLicense } from "../src/new-api-authority.js";
 import { adminLicenseControl, licenseSettings, masterStatus, runtimeClients } from "../src/new-api-admin.js";
 
 const sendJson = (res: ServerResponse, status: number, value: unknown) => {
@@ -27,6 +27,15 @@ const requestFromNode = (req: IncomingMessage) => new Request(`${siteUrl}${req.u
   body: ["GET", "HEAD"].includes(String(req.method)) ? undefined : req,
   duplex: "half",
 } as RequestInit);
+
+const requestWithMasterAuthority = (input: Record<string, unknown>) => new Request(`${siteUrl}/api/license/issue`, {
+  method: "POST",
+  headers: {
+    "content-type": "application/json",
+    authorization: `Bearer ${process.env.MASTER_API_TOKEN || ""}`,
+  },
+  body: JSON.stringify(input),
+});
 
 const apiIndex = (res: ServerResponse) => sendJson(res, 200, {
   ok: true,
@@ -59,7 +68,14 @@ const licenseRoute = async (req: IncomingMessage, res: ServerResponse, pathname:
   }
   if (pathname.endsWith("/issue") && req.method === "POST") {
     const request = requestFromNode(req);
-    return sendJson(res, 200, await issueLicense(request, await bodyOf(request)));
+    const input = await bodyOf(request);
+    try {
+      return sendJson(res, 200, await issueLicense(request, input));
+    } catch (error) {
+      if (!(error instanceof AuthorityError) || error.status !== 401) throw error;
+      await requireAdmin(request);
+      return sendJson(res, 200, await issueLicense(requestWithMasterAuthority(input), input));
+    }
   }
   return false;
 };
@@ -103,7 +119,14 @@ export default async function api(req: IncomingMessage, res: ServerResponse) {
     }
     if (pathname === "/api/license/issue" && req.method === "POST") {
       const request = requestFromNode(req);
-      return sendJson(res, 200, await issueLicense(request, await bodyOf(request)));
+      const input = await bodyOf(request);
+      try {
+        return sendJson(res, 200, await issueLicense(request, input));
+      } catch (error) {
+        if (!(error instanceof AuthorityError) || error.status !== 401) throw error;
+        await requireAdmin(request);
+        return sendJson(res, 200, await issueLicense(requestWithMasterAuthority(input), input));
+      }
     }
     if (pathname === "/api/license/health" && req.method === "GET") return sendJson(res, 200, await health());
     if (pathname === "/api/license/revision" && req.method === "GET") return sendJson(res, 200, revision());
