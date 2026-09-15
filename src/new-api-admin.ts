@@ -2,16 +2,6 @@ import { randomUUID } from "node:crypto";
 import { query } from "./new-api-db.js";
 import { AuthorityError, requireAdmin, revision } from "./new-api-authority.js";
 
-export async function masterStatus(req: Request) {
-  await requireAdmin(req);
-  const [settings, products] = await Promise.all([
-    query<any>("select * from master_license_settings where id='primary' limit 1"),
-    query<any>("select * from products order by code asc limit 500"),
-  ]);
-  const base = String(process.env.SITE_URL || "https://incendiarynetworks.cc").replace(/\/$/, "");
-  return { ok: true, authority: "license-master", config: { url: `${base}/api`, versionedUrl: `${base}/api/license/v1`, masterConfigured: Boolean(process.env.MASTER_API_TOKEN), billingConfigured: Boolean(process.env.BILLING_API_TOKEN), deployerConfigured: Boolean(process.env.DEPLOYER_API_TOKEN) }, revision: revision(), products: { products: products.rows }, settings: { settings: settings.rows[0] || null } };
-}
-
 async function ensureSettings() {
   await query(`create table if not exists master_license_settings (id text primary key, enabled boolean not null default true, issuer text not null default 'orbitfs-license-master', audience text not null default 'orbitfs-runtime', entitlement_ttl_seconds integer not null default 10800, grace_seconds integer not null default 604800, api_mode text not null default 'online', allow_offline_grace boolean not null default true, revision bigint not null default 1, updated_at timestamptz not null default now())`);
   await query("alter table master_license_settings add column if not exists enabled boolean not null default true");
@@ -24,8 +14,19 @@ async function ensureSettings() {
   await query("alter table master_license_settings add column if not exists revision bigint not null default 1");
   await query("alter table master_license_settings add column if not exists updated_at timestamptz not null default now()");
   await query("insert into master_license_settings(id) values ('primary') on conflict (id) do nothing");
-  // V1 Base/Engine validate signed entitlements using the legacy issuer contract.
+  // Keep compatibility with the V1 Base/Engine entitlement issuer contract.
   await query("update master_license_settings set issuer='orbitfs-website' where id='primary' and issuer='orbitfs-license-master'");
+}
+
+export async function masterStatus(req: Request) {
+  await requireAdmin(req);
+  await ensureSettings();
+  const [settings, products] = await Promise.all([
+    query<any>("select * from master_license_settings where id='primary' limit 1"),
+    query<any>("select * from products order by code asc limit 500"),
+  ]);
+  const base = String(process.env.SITE_URL || "https://incendiarynetworks.cc").replace(/\/$/, "");
+  return { ok: true, authority: "license-master", config: { url: `${base}/api`, versionedUrl: `${base}/api/license/v1`, masterConfigured: Boolean(process.env.MASTER_API_TOKEN), billingConfigured: Boolean(process.env.BILLING_API_TOKEN), deployerConfigured: Boolean(process.env.DEPLOYER_API_TOKEN) }, revision: revision(), products: { products: products.rows }, settings: { settings: settings.rows[0] || null } };
 }
 
 export async function licenseSettings(req: Request, input?: Record<string, unknown>) {
@@ -87,11 +88,7 @@ export async function adminLicenseControl(req: Request, id: string, action: stri
   if (status) {
     await query("update license_bindings set status=$1, desired_state=$1, remote_state=$1, updated_at=now() where id=$2 and archived_at is null", [status, id]);
     if (action !== "activate") await query("update license_installations set status='disabled', locked_at=coalesce(locked_at,now()) where binding_id=$1", [id]);
-  } else {
-    await query("update license_installations set status='active', locked_at=null, last_seen_at=now() where binding_id=$1", [id]);
-  }
-  try {
-    await query("insert into audit_log(id,entity_type,entity_id,action,actor_ref,detail) values($1,$2,$3,$4,$5,$6)", [randomUUID(), "licence", id, `admin.${action}`, String(user.id || user.email || "admin"), { action }]);
-  } catch {}
+  } else await query("update license_installations set status='active', locked_at=null, last_seen_at=now() where binding_id=$1", [id]);
+  try { await query("insert into audit_log(id,entity_type,entity_id,action,actor_ref,detail) values($1,$2,$3,$4,$5,$6)", [randomUUID(), "licence", id, `admin.${action}`, String(user.id || user.email || "admin"), { action }]); } catch {}
   return { ok: true, id, action, status: status || "unlocked" };
 }
