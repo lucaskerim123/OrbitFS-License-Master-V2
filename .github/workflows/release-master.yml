@@ -2,25 +2,6 @@ name: OrbitFS Base Release Pipeline
 
 on:
   workflow_dispatch:
-    inputs:
-      source_repo:
-        description: Base source repository
-        required: true
-        default: lucaskerim123/V1-vercel-base
-        type: string
-      source_branch:
-        description: Base release branch
-        required: true
-        default: base-release
-        type: string
-      source_sha:
-        description: Exact Base commit SHA
-        required: true
-        type: string
-      version:
-        description: Base release SemVer
-        required: true
-        type: string
   repository_dispatch:
     types: [orbitfs-base-release]
 
@@ -30,10 +11,10 @@ permissions:
 env:
   MASTER_API_URL: ${{ secrets.MASTER_API_URL }}
   MASTER_API_TOKEN: ${{ secrets.MASTER_API_TOKEN }}
-  SOURCE_REPO: ${{ github.event_name == 'workflow_dispatch' && inputs.source_repo || github.event.client_payload.source_repo }}
-  SOURCE_BRANCH: ${{ github.event_name == 'workflow_dispatch' && inputs.source_branch || github.event.client_payload.source_branch }}
-  SOURCE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.source_sha || github.event.client_payload.source_sha }}
-  RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.client_payload.version }}
+  SOURCE_REPO: lucaskerim123/V1-vercel-base
+  SOURCE_BRANCH: base-release
+  SOURCE_SHA: ${{ github.event.client_payload.source_sha }}
+  RELEASE_VERSION: ${{ github.event.client_payload.version }}
 
 concurrency:
   group: orbitfs-base-release
@@ -44,20 +25,30 @@ jobs:
     name: Capture and validate Base release
     runs-on: ubuntu-latest
     steps:
-      - name: Validate release source
+      - name: Resolve current Base release
+        id: resolve
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.SOURCE_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          [[ "$SOURCE_REPO" == "lucaskerim123/V1-vercel-base" ]] || { echo "Invalid Base release source repository."; exit 1; }
-          [[ "$SOURCE_BRANCH" == "base-release" ]] || { echo "Invalid Base release source branch."; exit 1; }
-          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid source commit SHA."; exit 1; }
-          [[ "$RELEASE_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]] || { echo "Invalid SemVer version."; exit 1; }
+          if [[ -z "${SOURCE_SHA:-}" ]]; then
+            SOURCE_SHA=$(gh api repos/lucaskerim123/V1-vercel-base/git/ref/heads/base-release --jq '.object.sha')
+          fi
+          if [[ -z "${RELEASE_VERSION:-}" ]]; then
+            RELEASE_VERSION=$(gh api repos/lucaskerim123/V1-vercel-base/contents/package.json?ref=base-release --jq '.content' | base64 -d | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')
+          fi
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid source commit SHA: $SOURCE_SHA"; exit 1; }
+          [[ "$RELEASE_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]] || { echo "Invalid SemVer version: $RELEASE_VERSION"; exit 1; }
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "release_version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved Base: $SOURCE_REPO / $SOURCE_BRANCH / $SOURCE_SHA / v$RELEASE_VERSION"
 
       - name: Checkout exact Base commit
         uses: actions/checkout@v4
         with:
           repository: lucaskerim123/V1-vercel-base
-          ref: ${{ env.SOURCE_SHA }}
+          ref: ${{ steps.resolve.outputs.source_sha }}
           token: ${{ secrets.SOURCE_GITHUB_TOKEN }}
           fetch-depth: 0
 
@@ -69,6 +60,8 @@ jobs:
 
       - name: Build release artifact
         shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.resolve.outputs.release_version }}
         run: |
           set -euo pipefail
           npm ci
@@ -81,6 +74,9 @@ jobs:
       - name: Capture release in License Master
         id: capture
         shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.resolve.outputs.source_sha }}
+          RELEASE_VERSION: ${{ steps.resolve.outputs.release_version }}
         run: |
           set -euo pipefail
           RESPONSE=$(curl --fail-with-body -sS -X POST "$MASTER_API_URL/api/release-capture" \
@@ -114,4 +110,6 @@ jobs:
             -H "Content-Type: application/json" -d '{}'
 
       - name: Leave release for manual Billing Store review
+        env:
+          RELEASE_VERSION: ${{ steps.resolve.outputs.release_version }}
         run: echo "Base release $RELEASE_VERSION is validated in License Master and remains pending manual Billing Store approval."
