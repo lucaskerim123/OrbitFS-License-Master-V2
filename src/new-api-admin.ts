@@ -9,35 +9,11 @@ export async function masterStatus(req: Request) {
     query<any>("select * from products order by code asc limit 500"),
   ]);
   const base = String(process.env.SITE_URL || "https://incendiarynetworks.cc").replace(/\/$/, "");
-  return {
-    ok: true,
-    authority: "license-master",
-    config: {
-      url: `${base}/api`,
-      versionedUrl: `${base}/api/license/v1`,
-      masterConfigured: Boolean(process.env.MASTER_API_TOKEN),
-      billingConfigured: Boolean(process.env.BILLING_API_TOKEN),
-      deployerConfigured: Boolean(process.env.DEPLOYER_API_TOKEN),
-    },
-    revision: revision(),
-    products: { products: products.rows },
-    settings: { settings: settings.rows[0] || null },
-  };
+  return { ok: true, authority: "license-master", config: { url: `${base}/api`, versionedUrl: `${base}/api/license/v1`, masterConfigured: Boolean(process.env.MASTER_API_TOKEN), billingConfigured: Boolean(process.env.BILLING_API_TOKEN), deployerConfigured: Boolean(process.env.DEPLOYER_API_TOKEN) }, revision: revision(), products: { products: products.rows }, settings: { settings: settings.rows[0] || null } };
 }
 
 async function ensureSettings() {
-  await query(`create table if not exists master_license_settings (
-    id text primary key,
-    enabled boolean not null default true,
-    issuer text not null default 'orbitfs-license-master',
-    audience text not null default 'orbitfs-runtime',
-    entitlement_ttl_seconds integer not null default 10800,
-    grace_seconds integer not null default 604800,
-    api_mode text not null default 'online',
-    allow_offline_grace boolean not null default true,
-    revision bigint not null default 1,
-    updated_at timestamptz not null default now()
-  )`);
+  await query(`create table if not exists master_license_settings (id text primary key, enabled boolean not null default true, issuer text not null default 'orbitfs-license-master', audience text not null default 'orbitfs-runtime', entitlement_ttl_seconds integer not null default 10800, grace_seconds integer not null default 604800, api_mode text not null default 'online', allow_offline_grace boolean not null default true, revision bigint not null default 1, updated_at timestamptz not null default now())`);
   await query("alter table master_license_settings add column if not exists enabled boolean not null default true");
   await query("alter table master_license_settings add column if not exists issuer text not null default 'orbitfs-license-master'");
   await query("alter table master_license_settings add column if not exists audience text not null default 'orbitfs-runtime'");
@@ -48,6 +24,8 @@ async function ensureSettings() {
   await query("alter table master_license_settings add column if not exists revision bigint not null default 1");
   await query("alter table master_license_settings add column if not exists updated_at timestamptz not null default now()");
   await query("insert into master_license_settings(id) values ('primary') on conflict (id) do nothing");
+  // V1 Base/Engine validate signed entitlements using the legacy issuer contract.
+  await query("update master_license_settings set issuer='orbitfs-website' where id='primary' and issuer='orbitfs-license-master'");
 }
 
 export async function licenseSettings(req: Request, input?: Record<string, unknown>) {
@@ -57,30 +35,20 @@ export async function licenseSettings(req: Request, input?: Record<string, unkno
     const row = (await query<any>("select id,enabled,issuer,audience,entitlement_ttl_seconds,grace_seconds,api_mode,allow_offline_grace,revision,updated_at from master_license_settings where id='primary' limit 1")).rows[0];
     return { ok: true, settings: row || null };
   }
-
   const current = (await query<any>("select * from master_license_settings where id='primary' limit 1")).rows[0] || {};
   const requestedMode = String(input.api_mode ?? input.mode ?? current.api_mode ?? "online").toLowerCase();
   const mode = requestedMode === "active" ? "online" : requestedMode;
   if (!["online", "offline", "maintenance"].includes(mode)) throw new AuthorityError(400, "api_mode must be online, offline, or maintenance", "INVALID_API_MODE");
-
   const enabled = input.enabled === undefined ? current.enabled !== false : Boolean(input.enabled);
   const ttl = Number(input.entitlement_ttl_seconds ?? current.entitlement_ttl_seconds ?? 10800);
   const grace = Number(input.grace_seconds ?? current.grace_seconds ?? 604800);
-  const issuer = String(input.issuer ?? current.issuer ?? "orbitfs-license-master").trim();
+  const issuer = String(input.issuer ?? current.issuer ?? "orbitfs-website").trim();
   const audience = String(input.audience ?? current.audience ?? "orbitfs-runtime").trim();
   const allowOfflineGrace = input.allow_offline_grace === undefined ? current.allow_offline_grace !== false : Boolean(input.allow_offline_grace);
   if (!issuer || !audience) throw new AuthorityError(400, "Issuer and audience are required", "INVALID_SETTINGS");
   if (!Number.isFinite(ttl) || !Number.isFinite(grace)) throw new AuthorityError(400, "TTL and grace period must be valid numbers", "INVALID_SETTINGS");
-
   const revisionNumber = Math.max(1, Math.floor(Number(current.revision || 0) + 1));
-  const row = (await query<any>(
-    `update master_license_settings
-       set enabled=$1,issuer=$2,audience=$3,entitlement_ttl_seconds=$4,grace_seconds=$5,
-           api_mode=$6,allow_offline_grace=$7,revision=$8,updated_at=now()
-     where id='primary'
-     returning id,enabled,issuer,audience,entitlement_ttl_seconds,grace_seconds,api_mode,allow_offline_grace,revision,updated_at`,
-    [enabled, issuer, audience, Math.max(60, Math.floor(ttl)), Math.max(0, Math.floor(grace)), mode, allowOfflineGrace, revisionNumber],
-  )).rows[0];
+  const row = (await query<any>(`update master_license_settings set enabled=$1,issuer=$2,audience=$3,entitlement_ttl_seconds=$4,grace_seconds=$5,api_mode=$6,allow_offline_grace=$7,revision=$8,updated_at=now() where id='primary' returning id,enabled,issuer,audience,entitlement_ttl_seconds,grace_seconds,api_mode,allow_offline_grace,revision,updated_at`, [enabled, issuer, audience, Math.max(60, Math.floor(ttl)), Math.max(0, Math.floor(grace)), mode, allowOfflineGrace, revisionNumber])).rows[0];
   if (!row) throw new AuthorityError(503, "License Master settings row is unavailable", "SETTINGS_UNAVAILABLE");
   return { ok: true, settings: row };
 }
@@ -108,11 +76,7 @@ export async function runtimeClients(req: Request) {
     if (row.created_at && (!map[key].last_seen_at || new Date(row.created_at) > new Date(map[key].last_seen_at))) map[key].last_seen_at = row.created_at;
   }
   const clients = Object.values(map).sort((a: any, b: any) => new Date(b.last_seen_at || 0).getTime() - new Date(a.last_seen_at || 0).getTime());
-  return {
-    clients,
-    activeToday: clients.filter((r: any) => r.last_seen_at && Date.now() - new Date(r.last_seen_at).getTime() < 24 * 60 * 60 * 1000).length,
-    componentRegistrations: installations.rows.length,
-  };
+  return { clients, activeToday: clients.filter((r: any) => r.last_seen_at && Date.now() - new Date(r.last_seen_at).getTime() < 24 * 60 * 60 * 1000).length, componentRegistrations: installations.rows.length };
 }
 
 export async function adminLicenseControl(req: Request, id: string, action: string) {
@@ -127,11 +91,7 @@ export async function adminLicenseControl(req: Request, id: string, action: stri
     await query("update license_installations set status='active', locked_at=null, last_seen_at=now() where binding_id=$1", [id]);
   }
   try {
-    await query("insert into audit_log(id,entity_type,entity_id,action,actor_ref,detail) values($1,$2,$3,$4,$5,$6)", [
-      randomUUID(), "licence", id, `admin.${action}`, String(user.id || user.email || "admin"), { action },
-    ]);
-  } catch {
-    // Keep the control operation authoritative even if an older database lacks audit_log.
-  }
+    await query("insert into audit_log(id,entity_type,entity_id,action,actor_ref,detail) values($1,$2,$3,$4,$5,$6)", [randomUUID(), "licence", id, `admin.${action}`, String(user.id || user.email || "admin"), { action }]);
+  } catch {}
   return { ok: true, id, action, status: status || "unlocked" };
 }
