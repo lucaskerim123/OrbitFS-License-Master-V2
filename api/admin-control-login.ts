@@ -1,9 +1,20 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-// Keep admin authentication self-contained under /api. Support the common
-// Supabase variable names already used by OrbitFS deployments.
-const SUPABASE_URL = String(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, "");
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+// Administrator authentication belongs to the OrbitFS account/auth system.
+// Keep Billing Store completely out of this path. Support the same Supabase
+// variables used by the New API, with the legacy names as fallbacks.
+const SUPABASE_URL = String(
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.SUPABASE_URL ||
+  "https://zekejuprrsurjmwgzexw.supabase.co",
+).replace(/\/$/, "");
+const SUPABASE_ANON_KEY =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  process.env.SUPABASE_ANON_KEY ||
+  process.env.SUPABASE_KEY ||
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  "sb_publishable_eRN8I1CeZ6zHu-mxK0Zc7g_yO47io5c";
 const adminEmails = new Set((process.env.ADMIN_EMAILS || "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean));
 
 async function body(req: IncomingMessage) {
