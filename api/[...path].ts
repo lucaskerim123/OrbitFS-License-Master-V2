@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { AuthorityError, bodyOf, health, issueLicense, publicSigningPem, revision, validateLicense } from "../src/new-api-authority.js";
-import { adminLicenseControl, masterStatus, runtimeClients } from "../src/new-api-admin.js";
+import { adminLicenseControl, licenseSettings, masterStatus, runtimeClients } from "../src/new-api-admin.js";
 
 const sendJson = (res: ServerResponse, status: number, value: unknown) => {
   res.statusCode = status;
@@ -28,12 +28,6 @@ const requestFromNode = (req: IncomingMessage) => new Request(`${siteUrl}${req.u
   duplex: "half",
 } as RequestInit);
 
-const writeResponse = async (res: ServerResponse, response: Response) => {
-  res.statusCode = response.status;
-  response.headers.forEach((value, key) => res.setHeader(key, value));
-  res.end(await response.text());
-};
-
 const apiIndex = (res: ServerResponse) => sendJson(res, 200, {
   ok: true,
   service: "OrbitFS License Master V2",
@@ -58,18 +52,14 @@ const licenseRoute = async (req: IncomingMessage, res: ServerResponse, pathname:
     return key ? sendText(res, 200, key, "application/x-pem-file; charset=utf-8") : sendJson(res, 503, { error: "Entitlement signing is not configured", code: "SIGNING_KEY_MISSING" });
   }
   if (pathname.endsWith("/validate") && req.method === "POST") {
-    const data = await validateLicense(await bodyOf(requestFromNode(req)));
-    return sendJson(res, 200, data);
+    return sendJson(res, 200, await validateLicense(await bodyOf(requestFromNode(req))));
   }
   if ((pathname.endsWith("/activate") || pathname.endsWith("/register")) && req.method === "POST") {
-    const input = await bodyOf(requestFromNode(req));
-    const data = await validateLicense({ ...input, activate: true });
-    return sendJson(res, 200, data);
+    return sendJson(res, 200, await validateLicense({ ...(await bodyOf(requestFromNode(req))), activate: true }));
   }
   if (pathname.endsWith("/issue") && req.method === "POST") {
     const request = requestFromNode(req);
-    const input = await bodyOf(request);
-    return sendJson(res, 200, await issueLicense(request, input));
+    return sendJson(res, 200, await issueLicense(request, await bodyOf(request)));
   }
   return false;
 };
@@ -86,11 +76,13 @@ export default async function api(req: IncomingMessage, res: ServerResponse) {
       return sendText(res, 200, html, "text/html; charset=utf-8");
     }
     if (pathname === "/api") return apiIndex(res);
-    if (pathname === "/api/admin/licenses/runtime-clients" && req.method === "GET") {
-      return sendJson(res, 200, await runtimeClients(requestFromNode(req)));
-    }
-    if (pathname === "/api/admin/license-master" && req.method === "GET") {
-      return sendJson(res, 200, await masterStatus(requestFromNode(req)));
+    if (pathname === "/api/admin/licenses/runtime-clients" && req.method === "GET") return sendJson(res, 200, await runtimeClients(requestFromNode(req)));
+    if (pathname === "/api/admin/license-master" && req.method === "GET") return sendJson(res, 200, await masterStatus(requestFromNode(req)));
+    if (pathname === "/api/admin/license-master/settings") {
+      const request = requestFromNode(req);
+      if (req.method === "GET") return sendJson(res, 200, await licenseSettings(request));
+      if (req.method === "PATCH" || req.method === "POST") return sendJson(res, 200, await licenseSettings(request, await bodyOf(request)));
+      return sendJson(res, 405, { error: "Method not allowed" });
     }
     const adminControlMatch = pathname.match(/^\/api\/admin\/licenses\/([^/]+)\/control$/);
     if (adminControlMatch && req.method === "POST") {
@@ -104,9 +96,7 @@ export default async function api(req: IncomingMessage, res: ServerResponse) {
       if (handled !== false) return handled;
     }
     if (pathname === "/api/license" || pathname === "/api/license/") return sendJson(res, 200, { ok: true, authority: "license-master", api: `${apiBase}/license/v1` });
-    if (pathname === "/api/license/validate" && req.method === "POST") {
-      return sendJson(res, 200, await validateLicense(await bodyOf(requestFromNode(req))));
-    }
+    if (pathname === "/api/license/validate" && req.method === "POST") return sendJson(res, 200, await validateLicense(await bodyOf(requestFromNode(req))));
     if (pathname === "/api/license/activate" || pathname === "/api/license/register") {
       if (req.method !== "POST") return sendJson(res, 405, { error: "Method not allowed" });
       return sendJson(res, 200, await validateLicense({ ...(await bodyOf(requestFromNode(req))), activate: true }));
