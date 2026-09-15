@@ -1,0 +1,79 @@
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const htmlPath = new URL('../web/admin.html', import.meta.url);
+let html = readFileSync(htmlPath, 'utf8');
+
+const css = `.settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.switch{display:flex;align-items:center;gap:10px;padding:11px;border:1px solid #30415c;background:#0a1423;border-radius:8px}.switch input{width:18px;height:18px}.danger-panel{border-color:#753944}.product-editor{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.product-editor .wide{grid-column:1/-1}.product-actions{display:flex;gap:7px;justify-content:flex-end}@media(max-width:760px){.settings-grid,.product-editor{grid-template-columns:1fr}.product-editor .wide{grid-column:auto}}`;
+if (!html.includes('.settings-grid{')) html = html.replace('</style>', css + '</style>');
+
+const productsSection = /<section id="products" class="view">.*?<\/section>/s;
+html = html.replace(productsSection, `<section id="products" class="view"><div class="card"><div class="row"><div style="flex:1"><h2>Products</h2><p class="sub">Edit the canonical product catalogue used by License Master and Billing Store.</p></div><button class="btn primary" style="width:auto" onclick="newProduct()">+ New Product</button></div><div id="productsEditor"></div></div></section>`);
+
+const settingsSection = /<section id="settings" class="view">.*?<\/section>/s;
+html = html.replace(settingsSection, `<section id="settings" class="view"><div class="card"><div class="row"><div style="flex:1"><h2>License Master Settings</h2><p class="sub">Full authority control. Changes apply to the canonical License Master API.</p></div><span id="settingsState" class="badge">Loading…</span></div><div class="settings-grid"><div class="card"><h3>API Control</h3><label class="switch"><input id="setEnabled" type="checkbox"><span><b>API enabled</b><small class="sub">Master API accepts normal licensing traffic.</small></span></label><div class="field"><label>API mode</label><select id="setMode"><option value="online">Online — normal operation</option><option value="maintenance">Maintenance — temporarily block licensing traffic</option><option value="offline">Offline — API intentionally unavailable</option></select></div><label class="switch"><input id="setGrace" type="checkbox"><span><b>Allow offline grace</b><small class="sub">Permit existing entitlements to use their configured grace period.</small></span></label></div><div class="card"><h3>Authority</h3><div class="field"><label>Issuer</label><input id="setIssuer"></div><div class="field"><label>Audience</label><input id="setAudience"></div><div class="field"><label>Entitlement TTL (seconds)</label><input id="setTtl" type="number" min="60"></div><div class="field"><label>Grace period (seconds)</label><input id="setGraceSeconds" type="number" min="0"></div></div></div><div class="row"><button class="btn primary" style="width:auto" onclick="saveSettings()">Save Settings</button><button class="btn danger-panel" style="width:auto" onclick="setApiMode('offline')">Take API Offline</button><button class="btn" style="width:auto" onclick="setApiMode('online')">Bring API Online</button></div><p id="settingsMsg" class="sub"></p></div><div class="card"><h3>Current configuration</h3><pre id="settingsBody" class="key">Loading…</pre></div></section>`);
+
+const jsMarker = 'function renderProducts(rows){';
+if (!html.includes(jsMarker)) {
+  const insertAt = html.indexOf('</script>');
+  const js = `\nfunction renderProducts(rows){const host=$('productsEditor');host.innerHTML=rows.length?rows.map(p=>'<div class="card"><div class="product-editor"><div class="field"><label>Code</label><input id="pc-'+esc(p.id)+'" value="'+esc(p.code)+'"></div><div class="field"><label>Name</label><input id="pn-'+esc(p.id)+'" value="'+esc(p.name)+'"></div><div class="field wide"><label>Description</label><textarea id="pd-'+esc(p.id)+'">'+esc(p.description||'')+'</textarea></div><div class="field"><label>Type</label><select id="pt-'+esc(p.id)+'"><option value="component" '+(p.product_type==='component'?'selected':'')+'>Component</option><option value="addon" '+(p.product_type==='addon'?'selected':'')+'>Addon</option><option value="bundle" '+(p.product_type==='bundle'?'selected':'')+'>Bundle</option></select></div><div class="field"><label>Component key</label><input id="pk-'+esc(p.id)+'" value="'+esc(p.component_key||'')+'"></div><div class="field"><label>Price</label><input id="pp-'+esc(p.id)+'" type="number" step="0.01" value="'+esc(p.price_amount||0)+'"></div><div class="field"><label>Currency</label><input id="pcu-'+esc(p.id)+'" value="'+esc(p.price_currency||'AUD')+'"></div><label class="switch"><input id="pa-'+esc(p.id)+'" type="checkbox" '+(p.active?'checked':'')+'><span>Active</span></label><label class="switch"><input id="ppr-'+esc(p.id)+'" type="checkbox" '+(p.purchasable?'checked':'')+'><span>Purchasable</span></label><label class="switch"><input id="ppu-'+esc(p.id)+'" type="checkbox" '+(p.public?'checked':'')+'><span>Public</span></label><div class="product-actions wide"><button class="btn bad" style="width:auto" onclick="deleteProduct(''+esc(p.id)+'')">Delete</button><button class="btn primary" style="width:auto" onclick="saveProduct(''+esc(p.id)+'')">Save Product</button></div></div></div>').join(''):'<p class="sub">No products configured.</p>'}\nasync function loadProducts(){try{const d=await api('/api/admin/products');renderProducts(d.products||[])}catch(e){$('productsEditor').innerHTML='<p class="sub">'+esc(e.message)+'</p>'}}\nasync function saveProduct(id){try{const d=await api('/api/admin/products/'+encodeURIComponent(id),{method:'POST',body:JSON.stringify({code:$('pc-'+id).value.trim(),name:$('pn-'+id).value.trim(),description:$('pd-'+id).value,type:$('pt-'+id).value,componentKey:$('pk-'+id).value.trim()||null,priceAmount:Number($('pp-'+id).value||0),priceCurrency:$('pcu-'+id).value.trim()||'AUD',active:$('pa-'+id).checked,purchasable:$('ppr-'+id).checked,public:$('ppu-'+id).checked})});$('settingsMsg').textContent=d.ok?'Product saved.':'Product updated.';await loadProducts()}catch(e){alert(e.message)}}\nasync function deleteProduct(id){if(!confirm('Delete this product from the catalogue?'))return;try{await api('/api/admin/products/'+encodeURIComponent(id),{method:'POST',body:JSON.stringify({delete:true})});await loadProducts()}catch(e){alert(e.message)}}\nfunction newProduct(){const id='new-'+Date.now();$('productsEditor').insertAdjacentHTML('afterbegin','<div class="card"><div class="product-editor"><div class="field"><label>Code</label><input id="new-code" placeholder="orbitfs_addon"></div><div class="field"><label>Name</label><input id="new-name" placeholder="OrbitFS Addon"></div><div class="field wide"><label>Description</label><textarea id="new-description"></textarea></div><div class="field"><label>Type</label><select id="new-type"><option value="addon">Addon</option><option value="component">Component</option><option value="bundle">Bundle</option></select></div><div class="field"><label>Component key</label><input id="new-component" placeholder="orbitfs_addon"></div><div class="field"><label>Price</label><input id="new-price" type="number" step="0.01" value="0"></div><div class="field"><label>Currency</label><input id="new-currency" value="AUD"></div><div class="product-actions wide"><button class="btn primary" style="width:auto" onclick="createProduct()">Create Product</button></div></div></div>')}\nasync function createProduct(){try{await api('/api/admin/products',{method:'POST',body:JSON.stringify({code:$('new-code').value.trim(),name:$('new-name').value.trim(),description:$('new-description').value,type:$('new-type').value,componentKey:$('new-component').value.trim()||null,priceAmount:Number($('new-price').value||0),priceCurrency:$('new-currency').value.trim()||'AUD'})});await loadProducts()}catch(e){alert(e.message)}}\nasync function loadSettings(){try{const d=await api('/api/admin/settings');const s=d.settings||{};$('setEnabled').checked=s.enabled!==false;$('setMode').value=s.api_mode||'online';$('setGrace').checked=s.allow_offline_grace!==false;$('setIssuer').value=s.issuer||'';$('setAudience').value=s.audience||'';$('setTtl').value=s.entitlement_ttl_seconds||10800;$('setGraceSeconds').value=s.grace_seconds||0;$('settingsBody').textContent=JSON.stringify(s,null,2);$('settingsState').textContent=(s.enabled===false?'DISABLED':String(s.api_mode||'online').toUpperCase());$('settingsState').className='badge '+(s.enabled===false||s.api_mode!=='online'?'warn':'') }catch(e){$('settingsMsg').textContent=e.message}}\nasync function saveSettings(){try{const d=await api('/api/admin/settings',{method:'POST',body:JSON.stringify({enabled:$('setEnabled').checked,api_mode:$('setMode').value,allow_offline_grace:$('setGrace').checked,issuer:$('setIssuer').value.trim(),audience:$('setAudience').value.trim(),entitlement_ttl_seconds:Number($('setTtl').value||10800),grace_seconds:Number($('setGraceSeconds').value||0)})});$('settingsMsg').textContent='Settings saved.';await loadSettings()}catch(e){$('settingsMsg').textContent=e.message}}\nasync function setApiMode(mode){$('setMode').value=mode;$('setEnabled').checked=mode==='online';await saveSettings()}\n`;
+  html = html.slice(0, insertAt) + js + html.slice(insertAt);
+}
+
+// Hook product/settings pages into navigation without disturbing the existing loader.
+html = html.replace("if(v==='releases')loadReleases();if(v==='settings')loadSettings();if(v==='deployments')loadAll();", "if(v==='releases')loadReleases();if(v==='settings')loadSettings();if(v==='products')loadProducts();if(v==='deployments')loadAll();");
+
+writeFileSync(htmlPath, html);
+
+const serverPath = new URL('../src/server.ts', import.meta.url);
+let server = readFileSync(serverPath, 'utf8');
+const marker = '    // ADMIN_SETTINGS_PRODUCTS_CONTROL_V1';
+if (!server.includes(marker)) {
+  const routes = [
+    marker,
+    '    if (path === "/api/admin/settings" && req.method === "GET") {',
+    '      await requireAdmin(req);',
+    '      await query("create table if not exists master_license_settings (id text primary key, enabled boolean not null default true, issuer text not null default \'orbitfs-website\', audience text not null default \'orbitfs-runtime\', entitlement_ttl_seconds integer not null default 10800, grace_seconds integer not null default 604800, api_mode text not null default \'online\', allow_offline_grace boolean not null default true, revision bigint not null default 1, updated_at timestamptz not null default now())");',
+    '      await query("insert into master_license_settings(id) values (\'primary\') on conflict(id) do nothing");',
+    '      return json(res, 200, { settings: (await query<JsonObject>("select * from master_license_settings where id=\'primary\' limit 1")).rows[0] || null });',
+    '    }',
+    '    if (path === "/api/admin/settings" && req.method === "POST") {',
+    '      await requireAdmin(req);',
+    '      const input = await body(req);',
+    '      const mode = String(input.api_mode || "online").toLowerCase();',
+    '      if (!["online","offline","maintenance"].includes(mode)) return json(res, 400, { error: "api_mode must be online, offline, or maintenance" });',
+    '      await query("insert into master_license_settings(id) values (\'primary\') on conflict(id) do nothing");',
+    '      const current = (await query<JsonObject>("select * from master_license_settings where id=\'primary\'")).rows[0] || {};',
+    '      const revision = Math.max(1, Math.floor(Number(current.revision || 0) + 1));',
+    '      const row = (await query<JsonObject>("update master_license_settings set enabled=$1,issuer=$2,audience=$3,entitlement_ttl_seconds=$4,grace_seconds=$5,api_mode=$6,allow_offline_grace=$7,revision=$8,updated_at=now() where id=\'primary\' returning *", [input.enabled === undefined ? current.enabled !== false : Boolean(input.enabled), String(input.issuer || current.issuer || "orbitfs-website"), String(input.audience || current.audience || "orbitfs-runtime"), Math.max(60, Math.floor(Number(input.entitlement_ttl_seconds || current.entitlement_ttl_seconds || 10800))), Math.max(0, Math.floor(Number(input.grace_seconds ?? current.grace_seconds ?? 604800))), mode, input.allow_offline_grace === undefined ? current.allow_offline_grace !== false : Boolean(input.allow_offline_grace), revision])).rows[0];',
+    '      return json(res, 200, { ok: true, settings: row });',
+    '    }',
+    '    if (path === "/api/admin/products" && req.method === "GET") {',
+    '      await requireAdmin(req);',
+    '      return json(res, 200, { products: (await query<JsonObject>("select * from license_products order by sort_order asc, code asc limit 500")).rows });',
+    '    }',
+    '    if (path === "/api/admin/products" && req.method === "POST") {',
+    '      await requireAdmin(req);',
+    '      const input = await body(req);',
+    '      const code = String(input.code || "").trim(); const name = String(input.name || "").trim();',
+    '      if (!code || !name) return json(res, 400, { error: "Product code and name are required" });',
+    '      const slug = code.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");',
+    '      const id = "prod_" + code.toLowerCase().replace(/[^a-z0-9_]+/g,"_");',
+    '      const row = (await query<JsonObject>("insert into license_products(id,code,name,slug,description,product_type,component_key,price_amount,price_currency) values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *", [id,code,name,slug,String(input.description||""),String(input.type||"addon"),input.componentKey||null,Number(input.priceAmount||0),String(input.priceCurrency||"AUD")])).rows[0];',
+    '      return json(res, 201, { ok: true, product: row });',
+    '    }',
+    '    const adminProductMatch = path.match(/^\\/api\\/admin\\/products\\/([^/]+)$/);',
+    '    if (adminProductMatch && req.method === "POST") {',
+    '      await requireAdmin(req);',
+    '      const id = decodeURIComponent(adminProductMatch[1]); const input = await body(req);',
+    '      if (input.delete === true) { await query("delete from license_products where id=$1", [id]); return json(res, 200, { ok: true, deleted: id }); }',
+    '      const row = (await query<JsonObject>("update license_products set code=$1,name=$2,description=$3,product_type=$4,component_key=$5,price_amount=$6,price_currency=$7,active=$8,purchasable=$9,public=$10,updated_at=now() where id=$11 returning *", [String(input.code||""),String(input.name||""),String(input.description||""),String(input.type||"addon"),input.componentKey||null,Number(input.priceAmount||0),String(input.priceCurrency||"AUD"),input.active===undefined?true:Boolean(input.active),input.purchasable===undefined?true:Boolean(input.purchasable),input.public===undefined?true:Boolean(input.public),id])).rows[0];',
+    '      return row ? json(res, 200, { ok: true, product: row }) : json(res, 404, { error: "Product not found" });',
+    '    }',
+  ].join("\\n") + "\\n";
+  const needle = '    return json(res, 404, { error: "Not found" });';
+  if (!server.includes(needle)) throw new Error('server route insertion point not found');
+  server = server.replace(needle, routes + needle);
+  writeFileSync(serverPath, server);
+}
+
+console.log('Full admin settings and product control panel enabled.');
