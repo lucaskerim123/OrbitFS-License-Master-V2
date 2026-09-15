@@ -34,6 +34,10 @@ async function restRows(table:string,params:Record<string,string>={},fallback:an
   }finally{clearTimeout(timer)}
 }
 
+async function optionalRows(table:string,params:Record<string,string>={}){
+  try{return await restRows(table,params,[])}catch{return []}
+}
+
 export async function GET(req:Request){
   try{
     const user=await resolveUser(req);
@@ -54,17 +58,21 @@ export async function GET(req:Request){
       connectionRows=connectionRows.map((x:any)=>x.provider==="vercel"?{...x,team_id:preferredInstall.vercel_team_id||x.team_id,metadata:{...(x.metadata||{}),team_id:preferredInstall.vercel_team_id||x.metadata?.team_id||null,team_locked:true}}:x);
     }
 
-    let events:any[]=[],releases:any[]=[];
+    let events:any[]=[],releases:any[]=[],latestRelease:any=null,latestBase:any=null,latestUpdate:any=null;
     const ids=installationRows.map((x:any)=>x.id).filter(Boolean);
     if(ids.length){
       const inFilter=`in.(${ids.map((id:any)=>`"${String(id).replace(/"/g,'\\"')}"`).join(",")})`;
-      const [eventRows,releaseRows]=await Promise.all([
-        restRows("orbitfs_deployment_events",{installation_id:inFilter,order:"created_at.desc",limit:"40"}),
-        restRows("orbitfs_installation_releases",{installation_id:inFilter,order:"created_at.desc",limit:"40"})
+      [events,releases]=await Promise.all([
+        optionalRows("orbitfs_deployment_events",{installation_id:inFilter,order:"created_at.desc",limit:"40"}),
+        optionalRows("orbitfs_installation_releases",{installation_id:inFilter,order:"created_at.desc",limit:"40"})
       ]);
-      events=eventRows;releases=releaseRows;
     }
 
-    return Response.json({settings:{enabled:true,customer_deploy_enabled:true,supabase_oauth_enabled:true,vercel_oauth_enabled:true},bindings:bindingRows,connections:connectionRows,installations:installationRows,events,releases,latestRelease:null,latestBase:null,latestUpdate:null},{headers:{"cache-control":"no-store"}});
+    const masterReleases=await optionalRows("releases",{status:"eq.published",order:"published_at.desc",limit:"50"});
+    latestBase=masterReleases.find((r:any)=>r.channel==="base"||r.component==="orbitfs_base")||null;
+    latestUpdate=masterReleases.find((r:any)=>r.channel==="update"||r.component!=="orbitfs_base")||null;
+    latestRelease=latestUpdate||latestBase||null;
+
+    return Response.json({settings:{enabled:true,customer_deploy_enabled:true,customer_updates_enabled:true,customer_rollbacks_enabled:true,supabase_oauth_enabled:true,vercel_oauth_enabled:true,allow_existing_supabase_project:true,allow_create_supabase_project:true,schema_version:"1",release_channel:"stable"},bindings:bindingRows,connections:connectionRows,installations:installationRows,events,releases,latestRelease,latestBase,latestUpdate},{headers:{"cache-control":"no-store"}});
   }catch(e){return httpError(e)}
 }
