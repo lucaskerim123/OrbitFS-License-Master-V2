@@ -12,8 +12,13 @@ const next = `async function start(){
 
 if (html.includes(old)) {
   html = html.replace(old, next);
-  writeFileSync(path, html);
-  console.log('Admin auth UI patched.');
-} else {
-  console.log('Admin auth UI already uses the canonical session flow; no patch required.');
 }
+
+const settingsOld = `api('/api/admin/settings')`;
+const settingsNew = `api('/api/admin-settings')`;
+if (html.includes(settingsOld)) {
+  html = html.replaceAll(settingsOld, settingsNew);
+}
+
+writeFileSync(path, html);
+console.log('Admin auth/settings UI normalized.');
