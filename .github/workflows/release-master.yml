@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 env:
-  MASTER_API_URL: ${{ secrets.MASTER_API_URL || 'https://www.incendiarynetworks.cc' }}
+  MASTER_API_URL: ${{ secrets.MASTER_API_URL || 'https://www.incendiarynetworks.cc/api' }}
   MASTER_API_TOKEN: ${{ secrets.MASTER_API_TOKEN }}
   SOURCE_REPO: lucaskerim123/V1-vercel-base
   SOURCE_BRANCH: base-release
@@ -87,9 +87,8 @@ jobs:
           [[ -n "$API_ROOT" ]] || { echo "MASTER_API_URL is not configured."; exit 1; }
           [[ -n "$MASTER_TOKEN" ]] || { echo "MASTER_API_TOKEN GitHub Actions secret is not configured."; exit 1; }
           API_ROOT="${API_ROOT%/}"
-          API_ROOT="${API_ROOT%/api}"
-          echo "License Master API: ${API_ROOT}/api"
-          curl --fail-with-body -sS --connect-timeout 10 --max-time 30 "${API_ROOT}/api/health" \
+          echo "License Master API: ${API_ROOT}"
+          curl --fail-with-body -sS --connect-timeout 10 --max-time 30 "${API_ROOT}/health" \
             -H "Authorization: Bearer $MASTER_TOKEN" \
             -H "Accept: application/json" >/dev/null
 
@@ -104,11 +103,10 @@ jobs:
         run: |
           set -euo pipefail
           API_ROOT="${API_ROOT%/}"
-          API_ROOT="${API_ROOT%/api}"
-          RESPONSE=$(curl --fail-with-body -sS -X POST "${API_ROOT}/api/release-capture" \
+          RESPONSE=$(curl --fail-with-body -sS --connect-timeout 10 --max-time 20 -X POST "${API_ROOT}/release-capture" \
             -H "Authorization: Bearer $MASTER_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{\"kind\":\"base\",\"version\":\"$RELEASE_VERSION\",\"sourceCommit\":\"$SOURCE_SHA\"}")
+            -d "{\"kind\":\"base\",\"version\":\"$RELEASE_VERSION\",\"sourceCommit\":\"$SOURCE_SHA\",\"sourceRepo\":\"$SOURCE_REPO\",\"sourceBranch\":\"$SOURCE_BRANCH\"}")
           echo "$RESPONSE" > release-capture.json
           RELEASE_ID=$(python3 -c 'import json; print(json.load(open("release-capture.json"))["release"]["id"])')
           [[ -n "$RELEASE_ID" ]] || { echo "License Master did not return a release ID."; exit 1; }
@@ -122,11 +120,10 @@ jobs:
         run: |
           set -euo pipefail
           API_ROOT="${API_ROOT%/}"
-          API_ROOT="${API_ROOT%/api}"
           FILE=$(find release-package -type f -name '*.tar.gz' -print -quit)
           [[ -n "$FILE" && -s "$FILE" ]] || { echo "Release artifact was not created."; exit 1; }
           SHA=$(sha256sum "$FILE" | awk '{print $1}')
-          curl --fail-with-body -sS -X POST "${API_ROOT}/api/v1/releases/$RELEASE_ID/artifact" \
+          curl --fail-with-body -sS --connect-timeout 10 --max-time 120 -X POST "${API_ROOT}/v1/releases/$RELEASE_ID/artifact" \
             -H "Authorization: Bearer $MASTER_TOKEN" \
             -H "Content-Type: application/gzip" \
             -H "X-Artifact-SHA256: $SHA" \
@@ -140,8 +137,7 @@ jobs:
         run: |
           set -euo pipefail
           API_ROOT="${API_ROOT%/}"
-          API_ROOT="${API_ROOT%/api}"
-          curl --fail-with-body -sS -X POST "${API_ROOT}/api/v1/releases/$RELEASE_ID/validate" \
+          curl --fail-with-body -sS --connect-timeout 10 --max-time 30 -X POST "${API_ROOT}/v1/releases/$RELEASE_ID/validate" \
             -H "Authorization: Bearer $MASTER_TOKEN" \
             -H "Content-Type: application/json" \
             -d '{}'
