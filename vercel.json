@@ -6,9 +6,9 @@
   "functions": {
     "api/**/*.ts": { "maxDuration": 15, "includeFiles": "web/admin.html" }
   },
-  "routes": [
-    { "src": "/?$", "dest": "/admin" },
-    { "src": "/admin/?$", "dest": "/api/admin" },
-    { "handle": "filesystem" }
+  "rewrites": [
+    { "source": "/", "destination": "/api/admin" },
+    { "source": "/admin", "destination": "/api/admin" },
+    { "source": "/admin/", "destination": "/api/admin" }
   ]
 }
