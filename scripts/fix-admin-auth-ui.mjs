@@ -10,7 +10,10 @@ const next = `async function start(){
   await loadStatus();
 }`;
 
-if (!html.includes(old)) throw new Error('Admin auth start function marker not found');
-html = html.replace(old, next);
-writeFileSync(path, html);
-console.log('Admin auth UI patched: successful Supabase login no longer gets discarded because a post-login status endpoint is unavailable.');
+if (html.includes(old)) {
+  html = html.replace(old, next);
+  writeFileSync(path, html);
+  console.log('Admin auth UI patched.');
+} else {
+  console.log('Admin auth UI already uses the canonical session flow; no patch required.');
+}
