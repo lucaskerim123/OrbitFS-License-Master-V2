@@ -1,13 +1,6 @@
-import {licenseDb} from "@/lib/license-api";
 import {httpError,requireOrbitUser} from "@/lib/orbitfs-deployment";
 
 export const dynamic="force-dynamic";
-
-const timeout=async<T>(promise:Promise<T>,fallback:T,ms=5000):Promise<T>=>{
-  let timer:ReturnType<typeof setTimeout>|undefined;
-  try{return await Promise.race([promise.catch(()=>fallback),new Promise<T>(resolve=>{timer=setTimeout(()=>resolve(fallback),ms)})])}
-  finally{if(timer)clearTimeout(timer)}
-};
 
 const hasBase=(b:any)=>b?.license_product_key==="orbitfs_base"||!!b?.components?.orbitfs_base||!!b?.components?.orbitfs_panel;
 
@@ -19,26 +12,38 @@ async function resolveUser(req:Request){
   return (await requireOrbitUser(req)).user;
 }
 
+async function restRows(table:string,params:Record<string,string>={},fallback:any[]=[]){
+  const base=String(process.env.SUPABASE_URL||"").replace(/\/+$/,"");
+  const key=String(process.env.SUPABASE_SERVICE_ROLE_KEY||"").trim();
+  if(!base||!key)return fallback;
+  const url=new URL(`${base}/rest/v1/${table}`);
+  for(const [k,v] of Object.entries(params))url.searchParams.set(k,v);
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),4000);
+  try{
+    const r=await fetch(url,{headers:{apikey:key,authorization:`Bearer ${key}`,accept:"application/json"},cache:"no-store",signal:controller.signal});
+    if(!r.ok)return fallback;
+    const data=await r.json().catch(()=>fallback);
+    return Array.isArray(data)?data:fallback;
+  }catch{return fallback}finally{clearTimeout(timer)}
+}
+
 export async function GET(req:Request){
   try{
-    const user=await resolveUser(req),db=licenseDb();
-
-    const bindingsP=db.from("license_bindings").select("*").eq("auth_user_id",user.id).is("archived_at",null).order("created_at",{ascending:false});
-    const connectionsP=db.from("orbitfs_provider_connections").select("id,provider,status,provider_account_id,provider_account_name,team_id,scopes,token_expires_at,connected_at,refreshed_at,last_error,metadata").eq("auth_user_id",user.id);
-    const installationsP=db.from("orbitfs_installations").select("*").eq("auth_user_id",user.id).order("created_at",{ascending:false});
-
+    const user=await resolveUser(req);
+    const userFilter={auth_user_id:`eq.${user.id}`};
     const [bindings,connections,installations]=await Promise.all([
-      timeout(bindingsP as any,{data:[],error:null}),
-      timeout(connectionsP as any,{data:[],error:null}),
-      timeout(installationsP as any,{data:[],error:null})
+      restRows("license_bindings",{...userFilter,archived_at:"is.null",order:"created_at.desc"}),
+      restRows("orbitfs_provider_connections",{...userFilter,order:"created_at.desc"}),
+      restRows("orbitfs_installations",{...userFilter,order:"created_at.desc"})
     ]);
 
-    const bindingRows=(bindings.data||[]).sort((a:any,b:any)=>String(b.created_at||"").localeCompare(String(a.created_at||"")));
-    const installationRows=installations.data||[];
+    const bindingRows=bindings.sort((a:any,b:any)=>String(b.created_at||"").localeCompare(String(a.created_at||"")));
+    const installationRows=installations;
     const preferredBinding=bindingRows.find(hasBase)||bindingRows[0]||null;
     const preferredInstall=preferredBinding?installationRows.find((x:any)=>x.license_binding_id===preferredBinding.id):null;
 
-    let connectionRows=(connections.data||[]).map((x:any)=>({...x,metadata:{...(x.metadata||{})}}));
+    let connectionRows=connections.map((x:any)=>({...x,metadata:{...(x.metadata||{})}}));
     if(preferredInstall?.vercel_project_id){
       connectionRows=connectionRows.map((x:any)=>x.provider==="vercel"?{...x,team_id:preferredInstall.vercel_team_id||x.team_id,metadata:{...(x.metadata||{}),team_id:preferredInstall.vercel_team_id||x.metadata?.team_id||null,team_locked:true}}:x);
     }
@@ -46,11 +51,12 @@ export async function GET(req:Request){
     let events:any[]=[],releases:any[]=[];
     const ids=installationRows.map((x:any)=>x.id).filter(Boolean);
     if(ids.length){
-      const [eventResult,releaseResult]=await Promise.all([
-        timeout(db.from("orbitfs_deployment_events").select("*").in("installation_id",ids).order("created_at",{ascending:false}).limit(40) as any,{data:[],error:null}),
-        timeout(db.from("orbitfs_installation_releases").select("*").in("installation_id",ids).order("created_at",{ascending:false}).limit(40) as any,{data:[],error:null})
+      const inFilter=`in.(${ids.map((id:any)=>`"${String(id).replace(/"/g,'\\"')}"`).join(",")})`;
+      const [eventRows,releaseRows]=await Promise.all([
+        restRows("orbitfs_deployment_events",{installation_id:inFilter,order:"created_at.desc",limit:"40"}),
+        restRows("orbitfs_installation_releases",{installation_id:inFilter,order:"created_at.desc",limit:"40"})
       ]);
-      events=eventResult.data||[];releases=releaseResult.data||[];
+      events=eventRows;releases=releaseRows;
     }
 
     return Response.json({
