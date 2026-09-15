@@ -11,11 +11,13 @@ const requestFromNode = (req: IncomingMessage) => new Request(`https://${req.hea
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   try {
     if (req.method !== "POST" && req.method !== "PATCH") { res.statusCode = 405; return res.end(JSON.stringify({ error: "Method not allowed" })); }
-    const match = String(req.url || "").split("?")[0].match(/^\/api\/admin\/licenses\/([^/]+)\/control$/);
-    if (!match) { res.statusCode = 404; return res.end(JSON.stringify({ error: "License control route not found" })); }
+    const url = new URL(`https://${req.headers.host || "www.incendiarynetworks.cc"}${req.url || "/"}`);
+    const match = url.pathname.match(/^\/api\/admin\/licenses\/([^/]+)\/control$/);
+    const id = match ? decodeURIComponent(match[1]) : url.searchParams.get("id") || "";
+    if (!id) { res.statusCode = 400; return res.end(JSON.stringify({ error: "License ID is required" })); }
     const input = await bodyOf(requestFromNode(req));
-    const action = String(input.action || "");
-    const result = await adminLicenseControl(requestFromNode(req), decodeURIComponent(match[1]), action);
+    const action = String(input.action || url.searchParams.get("action") || "");
+    const result = await adminLicenseControl(requestFromNode(req), id, action);
     res.statusCode = 200;
     res.setHeader("content-type", "application/json; charset=utf-8");
     res.setHeader("cache-control", "no-store");
