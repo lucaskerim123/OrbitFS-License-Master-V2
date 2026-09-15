@@ -4,7 +4,7 @@
   "installCommand": "npm ci",
   "buildCommand": "npm run build",
   "functions": {
-    "api/**/*.ts": { "maxDuration": 10, "includeFiles": "web/admin-control.html" }
+    "api/**/*.ts": { "maxDuration": 10, "includeFiles": "web/admin.html" }
   },
   "routes": [
     { "src": "/admin/?$", "dest": "/api/admin" },
