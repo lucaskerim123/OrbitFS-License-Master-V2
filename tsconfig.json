@@ -9,5 +9,6 @@
     "lib": ["ES2022", "DOM"],
     "types": ["node"]
   },
-  "include": ["src/server.ts", "api/**/*.ts"]
+  "include": ["src/**/*.ts", "api/**/*.ts"],
+  "exclude": ["New API/**/*"]
 }

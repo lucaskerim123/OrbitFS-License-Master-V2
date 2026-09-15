@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/dev.ts",
-    "build": "node scripts/fix-admin-route-build.mjs && node scripts/ensure-api-authority-contract.mjs && tsc --noEmit --noCheck && echo OrbitFS-License-Master build completed",
+    "build": "tsc --noEmit --noCheck && echo OrbitFS-License-Master build completed",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": { "pg": "^8.23.0" },
