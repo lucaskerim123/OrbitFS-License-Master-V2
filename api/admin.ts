@@ -5,6 +5,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 export default function admin(_req: IncomingMessage, res: ServerResponse) {
   try {
     let html = readFileSync(new URL("../web/admin.html", import.meta.url), "utf8");
+    html = html.replaceAll("/api/v1", "/api/license/v1");
     html = html.replace("</body>", `<script>
 window.setApiBases=function(){const base=location.origin+'/api';const a=$("apiBase");if(a)a.value=base;const v=$("apiVersionedBase");if(v)v.value=base+'/license/v1';const h=$("authorityHost");if(h)h.textContent=location.host;};
 window.renderReleaseSources=function(){if($("baseSource"))$("baseSource").innerHTML='<b>Base deployment source</b><span>lucaskerim123/V1-vercel-base / base-release · latest commit loaded from License Master</span>';if($("updateSource"))$("updateSource").innerHTML='<b>Update release source</b><span>lucaskerim123/V1-vercel-engine / release-updates · latest commit loaded from License Master</span>';};
