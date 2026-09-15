@@ -55,11 +55,13 @@ jobs:
             fi
           elif [[ "${{ github.event.action }}" == "orbitfs-base-release" ]]; then
             [[ "${{ github.event.client_payload.source_repo }}" == "lucaskerim123/V1-vercel-base" ]] || { echo "::error::Invalid Base release source repository."; exit 1; }
+            [[ "${{ github.event.client_payload.source_branch }}" == "base-release" ]] || { echo "::error::Invalid Base release source branch."; exit 1; }
             echo "repo=lucaskerim123/V1-vercel-base" >> "$GITHUB_OUTPUT"
             echo "branch=base-release" >> "$GITHUB_OUTPUT"
             echo "channel=base-release" >> "$GITHUB_OUTPUT"
           else
             [[ "${{ github.event.client_payload.source_repo }}" == "lucaskerim123/V1-vercel-engine" ]] || { echo "::error::Invalid Engine release source repository."; exit 1; }
+            [[ "${{ github.event.client_payload.source_branch }}" == "release-updates" ]] || { echo "::error::Invalid Engine release source branch."; exit 1; }
             echo "repo=lucaskerim123/V1-vercel-engine" >> "$GITHUB_OUTPUT"
             echo "branch=release-updates" >> "$GITHUB_OUTPUT"
             echo "channel=release-updates" >> "$GITHUB_OUTPUT"
@@ -93,7 +95,7 @@ jobs:
             if [[ -z "$VERSION_INPUT" ]]; then
               VERSION_INPUT="$(node -p "require('./package.json').version" 2>/dev/null || true)"
             fi
-            AUTOMATIC='true'
+            AUTOMATIC='false'
           fi
           if [[ -z "$VERSION_INPUT" || ! "$VERSION_INPUT" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
             echo "A valid SemVer version is required." >&2
@@ -186,8 +188,17 @@ jobs:
             -H "Authorization: Bearer $MASTER_API_TOKEN" \
             -H "Content-Type: application/json" -d '{}'
 
-      - name: Finalize for Billing Store when automation is enabled
-        if: steps.release.outputs.automatic == 'true'
+      - name: Hand validated release to Billing Store for admin review
+        if: github.event_name == 'repository_dispatch'
+        env:
+          RELEASE_ID: ${{ steps.capture.outputs.release_id }}
+        run: |
+          curl --fail-with-body -sS -X POST "$MASTER_API_URL/api/release-handoff?action=finalize&id=$RELEASE_ID" \
+            -H "Authorization: Bearer $MASTER_API_TOKEN" \
+            -H "Content-Type: application/json" -d '{}'
+
+      - name: Finalize for Billing Store when manual automation is explicitly enabled
+        if: github.event_name == 'workflow_dispatch' && steps.release.outputs.automatic == 'true'
         env:
           RELEASE_ID: ${{ steps.capture.outputs.release_id }}
         run: |
