@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { query } from "./new-api-db.js";
 import { AuthorityError, requireAdmin, revision } from "./new-api-authority.js";
 
@@ -7,11 +8,12 @@ export async function masterStatus(req: Request) {
     query<any>("select * from master_license_settings where id='primary' limit 1"),
     query<any>("select * from products order by code asc limit 500"),
   ]);
+  const base = String(process.env.SITE_URL || "https://incendiarynetworks.cc").replace(/\/$/, "");
   return {
     ok: true,
     authority: "license-master",
     config: {
-      url: "https://incendiarynetworks.cc/api",
+      url: `${base}/api`,
       masterConfigured: Boolean(process.env.MASTER_API_TOKEN),
       billingConfigured: Boolean(process.env.BILLING_API_TOKEN),
       deployerConfigured: Boolean(process.env.DEPLOYER_API_TOKEN),
@@ -53,7 +55,7 @@ export async function runtimeClients(req: Request) {
 }
 
 export async function adminLicenseControl(req: Request, id: string, action: string) {
-  await requireAdmin(req);
+  const user = await requireAdmin(req);
   if (!id) throw new AuthorityError(400, "License ID is required", "LICENSE_ID_REQUIRED");
   if (!["activate", "suspend", "unlock", "terminate"].includes(action)) throw new AuthorityError(400, "Invalid license control action", "INVALID_ACTION");
   const status = action === "activate" ? "active" : action === "suspend" ? "suspended" : action === "terminate" ? "terminated" : null;
@@ -62,6 +64,13 @@ export async function adminLicenseControl(req: Request, id: string, action: stri
     if (action !== "activate") await query("update license_installations set status='disabled', locked_at=coalesce(locked_at,now()) where binding_id=$1", [id]);
   } else {
     await query("update license_installations set status='active', locked_at=null, last_seen_at=now() where binding_id=$1", [id]);
+  }
+  try {
+    await query("insert into audit_log(id,entity_type,entity_id,action,actor_ref,detail) values($1,$2,$3,$4,$5,$6)", [
+      randomUUID(), "licence", id, `admin.${action}`, String(user.id || user.email || "admin"), { action },
+    ]);
+  } catch {
+    // Keep the control operation authoritative even if an older database lacks audit_log.
   }
   return { ok: true, id, action, status: status || "unlocked" };
 }
