@@ -1,169 +1,68 @@
-name: OrbitFS License Master Release Pipeline
+name: OrbitFS Base Release Pipeline
 
 on:
-  workflow_dispatch:
-    inputs:
-      component:
-        description: "base or update"
-        required: true
-        default: "base"
-        type: choice
-        options: [base, update]
-      version:
-        description: "SemVer release version, e.g. 1.4.0"
-        required: true
-        type: string
-      automatic:
-        description: "Allow Master automation to finalize the release for Billing Store"
-        required: true
-        default: false
-        type: boolean
   repository_dispatch:
-    types: [orbitfs-base-release, orbitfs-update-release]
+    types: [orbitfs-base-release]
 
 permissions:
-  contents: write
-  deployments: write
-
-concurrency:
-  group: orbitfs-release-${{ github.event.action || github.ref }}
-  cancel-in-progress: false
+  contents: read
 
 env:
   MASTER_API_URL: ${{ secrets.MASTER_API_URL }}
   MASTER_API_TOKEN: ${{ secrets.MASTER_API_TOKEN }}
 
+concurrency:
+  group: orbitfs-base-release
+  cancel-in-progress: false
+
 jobs:
   release:
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch'
+    name: Capture and validate Base release
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve source repository and channel
-        id: source
+      - name: Validate release source
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            if [[ "${{ inputs.component }}" == "base" ]]; then
-              echo "repo=lucaskerim123/V1-vercel-base" >> "$GITHUB_OUTPUT"
-              echo "branch=base-release" >> "$GITHUB_OUTPUT"
-              echo "channel=base-release" >> "$GITHUB_OUTPUT"
-            else
-              echo "repo=lucaskerim123/V1-vercel-engine" >> "$GITHUB_OUTPUT"
-              echo "branch=release-updates" >> "$GITHUB_OUTPUT"
-              echo "channel=release-updates" >> "$GITHUB_OUTPUT"
-            fi
-          elif [[ "${{ github.event.action }}" == "orbitfs-base-release" ]]; then
-            [[ "${{ github.event.client_payload.source_repo }}" == "lucaskerim123/V1-vercel-base" ]] || { echo "::error::Invalid Base release source repository."; exit 1; }
-            [[ "${{ github.event.client_payload.source_branch }}" == "base-release" ]] || { echo "::error::Invalid Base release source branch."; exit 1; }
-            echo "repo=lucaskerim123/V1-vercel-base" >> "$GITHUB_OUTPUT"
-            echo "branch=base-release" >> "$GITHUB_OUTPUT"
-            echo "channel=base-release" >> "$GITHUB_OUTPUT"
-          else
-            [[ "${{ github.event.client_payload.source_repo }}" == "lucaskerim123/V1-vercel-engine" ]] || { echo "::error::Invalid Engine release source repository."; exit 1; }
-            [[ "${{ github.event.client_payload.source_branch }}" == "release-updates" ]] || { echo "::error::Invalid Engine release source branch."; exit 1; }
-            echo "repo=lucaskerim123/V1-vercel-engine" >> "$GITHUB_OUTPUT"
-            echo "branch=release-updates" >> "$GITHUB_OUTPUT"
-            echo "channel=release-updates" >> "$GITHUB_OUTPUT"
-          fi
+          [[ "${{ github.event.client_payload.source_repo }}" == "lucaskerim123/V1-vercel-base" ]] || { echo "Invalid Base release source repository."; exit 1; }
+          [[ "${{ github.event.client_payload.source_branch }}" == "base-release" ]] || { echo "Invalid Base release source branch."; exit 1; }
+          [[ "${{ github.event.client_payload.source_sha }}" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid source commit SHA."; exit 1; }
+          [[ "${{ github.event.client_payload.version }}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]] || { echo "Invalid SemVer version."; exit 1; }
 
-      - name: Checkout release channel
+      - name: Checkout exact Base commit
         uses: actions/checkout@v4
         with:
-          repository: ${{ steps.source.outputs.repo }}
-          ref: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.source_sha || steps.source.outputs.branch }}
+          repository: lucaskerim123/V1-vercel-base
+          ref: ${{ github.event.client_payload.source_sha }}
           token: ${{ secrets.SOURCE_GITHUB_TOKEN }}
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
-      - name: Resolve release identity
-        id: release
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            COMPONENT_INPUT='${{ inputs.component }}'
-            VERSION_INPUT='${{ inputs.version }}'
-            AUTOMATIC='${{ inputs.automatic }}'
-          else
-            COMPONENT_INPUT="$([[ '${{ github.event.action }}' == 'orbitfs-base-release' ]] && echo base || echo update)"
-            VERSION_INPUT='${{ github.event.client_payload.version }}'
-            if [[ -z "$VERSION_INPUT" ]]; then
-              VERSION_INPUT="$(node -p "require('./package.json').version" 2>/dev/null || true)"
-            fi
-            AUTOMATIC='false'
-          fi
-          if [[ -z "$VERSION_INPUT" || ! "$VERSION_INPUT" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
-            echo "A valid SemVer version is required." >&2
-            exit 1
-          fi
-          echo "component=$COMPONENT_INPUT" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION_INPUT" >> "$GITHUB_OUTPUT"
-          echo "automatic=$AUTOMATIC" >> "$GITHUB_OUTPUT"
-          echo "channel=${{ steps.source.outputs.channel }}" >> "$GITHUB_OUTPUT"
-          echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Check semantic version is increased
-        shell: bash
-        env:
-          VERSION: ${{ steps.release.outputs.version }}
-        run: |
-          set -euo pipefail
-          git fetch --tags --force
-          python3 - <<'PY'
-          import os, re, subprocess
-          version=os.environ['VERSION']
-          pat=re.compile(r'^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$')
-          def parse(v):
-              m=pat.match(v); return None if not m else (int(m[1]),int(m[2]),int(m[3]),m[4] or '')
-          cur=parse(version)
-          if not cur: raise SystemExit('Invalid SemVer')
-          versions=[]
-          for tag in subprocess.check_output(['git','tag','--list'],text=True).splitlines():
-              v=tag[1:] if tag.startswith('v') else tag
-              p=parse(v)
-              if p: versions.append((p,v))
-          if versions and cur <= max(versions)[0]:
-              raise SystemExit(f'{version} is not greater than latest semantic version {max(versions)[1]}')
-          print(f'SemVer gate passed: {version}')
-          PY
-
-      - name: Start GitHub deployment record
-        id: deployment
-        uses: tallyb/deployments@master
-        with:
-          step: start
-          token: ${{ secrets.GITHUB_TOKEN }}
-          env: ${{ steps.release.outputs.channel }}
-          ref: ${{ steps.release.outputs.source_sha }}
-          desc: "OrbitFS License Master release ${{ steps.release.outputs.version }} from ${{ steps.release.outputs.channel }}"
-
-      - name: Build release package
+      - name: Build release artifact
         shell: bash
         run: |
           set -euo pipefail
           npm ci
+          npm run check
           npm run build
           mkdir -p release-package
-          tar -czf "release-package/orbitfs-${{ steps.release.outputs.component }}-${{ steps.release.outputs.version }}.tar.gz" . --exclude=.git --exclude=node_modules --exclude=release-package
+          tar -czf "release-package/orbitfs-base-${{ github.event.client_payload.version }}.tar.gz" . --exclude=.git --exclude=node_modules --exclude=release-package
           sha256sum release-package/*
 
       - name: Capture release in License Master
         id: capture
         shell: bash
-        env:
-          COMPONENT: ${{ steps.release.outputs.component }}
-          VERSION: ${{ steps.release.outputs.version }}
         run: |
           set -euo pipefail
           RESPONSE=$(curl --fail-with-body -sS -X POST "$MASTER_API_URL/api/release-capture" \
             -H "Authorization: Bearer $MASTER_API_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{\"kind\":\"$COMPONENT\",\"version\":\"$VERSION\",\"sourceCommit\":\"${{ steps.release.outputs.source_sha }}\"}")
+            -d "{\"kind\":\"base\",\"version\":\"${{ github.event.client_payload.version }}\",\"sourceCommit\":\"${{ github.event.client_payload.source_sha }}\"}")
           echo "$RESPONSE" > release-capture.json
           RELEASE_ID=$(python3 -c 'import json; print(json.load(open("release-capture.json"))["release"]["id"])')
           echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
@@ -172,6 +71,7 @@ jobs:
         env:
           RELEASE_ID: ${{ steps.capture.outputs.release_id }}
         run: |
+          set -euo pipefail
           FILE=$(find release-package -type f -name '*.tar.gz' | head -1)
           SHA=$(sha256sum "$FILE" | awk '{print $1}')
           curl --fail-with-body -sS -X POST "$MASTER_API_URL/api/v1/releases/$RELEASE_ID/artifact" \
@@ -184,34 +84,10 @@ jobs:
         env:
           RELEASE_ID: ${{ steps.capture.outputs.release_id }}
         run: |
+          set -euo pipefail
           curl --fail-with-body -sS -X POST "$MASTER_API_URL/api/v1/releases/$RELEASE_ID/validate" \
             -H "Authorization: Bearer $MASTER_API_TOKEN" \
             -H "Content-Type: application/json" -d '{}'
 
-      - name: Hand validated release to Billing Store for admin review
-        if: github.event_name == 'repository_dispatch'
-        env:
-          RELEASE_ID: ${{ steps.capture.outputs.release_id }}
-        run: |
-          curl --fail-with-body -sS -X POST "$MASTER_API_URL/api/release-handoff?action=finalize&id=$RELEASE_ID" \
-            -H "Authorization: Bearer $MASTER_API_TOKEN" \
-            -H "Content-Type: application/json" -d '{}'
-
-      - name: Finalize for Billing Store when manual automation is explicitly enabled
-        if: github.event_name == 'workflow_dispatch' && steps.release.outputs.automatic == 'true'
-        env:
-          RELEASE_ID: ${{ steps.capture.outputs.release_id }}
-        run: |
-          curl --fail-with-body -sS -X POST "$MASTER_API_URL/api/release-handoff?action=auto-finalize&id=$RELEASE_ID" \
-            -H "Authorization: Bearer $MASTER_API_TOKEN" \
-            -H "Content-Type: application/json" -d '{}'
-
-      - name: Finish GitHub deployment record
-        if: always()
-        uses: tallyb/deployments@master
-        with:
-          step: finish
-          token: ${{ secrets.GITHUB_TOKEN }}
-          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
-          status: ${{ job.status }}
-          logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      - name: Leave release for Billing Store admin review
+        run: echo "Base release ${{ github.event.client_payload.version }} is validated in License Master and remains pending Billing Store admin approval."
