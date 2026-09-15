@@ -1,6 +1,26 @@
 name: OrbitFS Base Release Pipeline
 
 on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: Base source repository
+        required: true
+        default: lucaskerim123/V1-vercel-base
+        type: string
+      source_branch:
+        description: Base release branch
+        required: true
+        default: base-release
+        type: string
+      source_sha:
+        description: Exact Base commit SHA
+        required: true
+        type: string
+      version:
+        description: Base release SemVer
+        required: true
+        type: string
   repository_dispatch:
     types: [orbitfs-base-release]
 
@@ -10,6 +30,10 @@ permissions:
 env:
   MASTER_API_URL: ${{ secrets.MASTER_API_URL }}
   MASTER_API_TOKEN: ${{ secrets.MASTER_API_TOKEN }}
+  SOURCE_REPO: ${{ github.event_name == 'workflow_dispatch' && inputs.source_repo || github.event.client_payload.source_repo }}
+  SOURCE_BRANCH: ${{ github.event_name == 'workflow_dispatch' && inputs.source_branch || github.event.client_payload.source_branch }}
+  SOURCE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.source_sha || github.event.client_payload.source_sha }}
+  RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.client_payload.version }}
 
 concurrency:
   group: orbitfs-base-release
@@ -24,16 +48,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          [[ "${{ github.event.client_payload.source_repo }}" == "lucaskerim123/V1-vercel-base" ]] || { echo "Invalid Base release source repository."; exit 1; }
-          [[ "${{ github.event.client_payload.source_branch }}" == "base-release" ]] || { echo "Invalid Base release source branch."; exit 1; }
-          [[ "${{ github.event.client_payload.source_sha }}" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid source commit SHA."; exit 1; }
-          [[ "${{ github.event.client_payload.version }}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]] || { echo "Invalid SemVer version."; exit 1; }
+          [[ "$SOURCE_REPO" == "lucaskerim123/V1-vercel-base" ]] || { echo "Invalid Base release source repository."; exit 1; }
+          [[ "$SOURCE_BRANCH" == "base-release" ]] || { echo "Invalid Base release source branch."; exit 1; }
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid source commit SHA."; exit 1; }
+          [[ "$RELEASE_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]] || { echo "Invalid SemVer version."; exit 1; }
 
       - name: Checkout exact Base commit
         uses: actions/checkout@v4
         with:
           repository: lucaskerim123/V1-vercel-base
-          ref: ${{ github.event.client_payload.source_sha }}
+          ref: ${{ env.SOURCE_SHA }}
           token: ${{ secrets.SOURCE_GITHUB_TOKEN }}
           fetch-depth: 0
 
@@ -51,7 +75,7 @@ jobs:
           npm run check
           npm run build
           mkdir -p release-package
-          tar -czf "release-package/orbitfs-base-${{ github.event.client_payload.version }}.tar.gz" . --exclude=.git --exclude=node_modules --exclude=release-package
+          tar -czf "release-package/orbitfs-base-${RELEASE_VERSION}.tar.gz" . --exclude=.git --exclude=node_modules --exclude=release-package
           sha256sum release-package/*
 
       - name: Capture release in License Master
@@ -62,7 +86,7 @@ jobs:
           RESPONSE=$(curl --fail-with-body -sS -X POST "$MASTER_API_URL/api/release-capture" \
             -H "Authorization: Bearer $MASTER_API_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{\"kind\":\"base\",\"version\":\"${{ github.event.client_payload.version }}\",\"sourceCommit\":\"${{ github.event.client_payload.source_sha }}\"}")
+            -d "{\"kind\":\"base\",\"version\":\"$RELEASE_VERSION\",\"sourceCommit\":\"$SOURCE_SHA\"}")
           echo "$RESPONSE" > release-capture.json
           RELEASE_ID=$(python3 -c 'import json; print(json.load(open("release-capture.json"))["release"]["id"])')
           echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
@@ -89,5 +113,5 @@ jobs:
             -H "Authorization: Bearer $MASTER_API_TOKEN" \
             -H "Content-Type: application/json" -d '{}'
 
-      - name: Leave release for Billing Store admin review
-        run: echo "Base release ${{ github.event.client_payload.version }} is validated in License Master and remains pending Billing Store admin approval."
+      - name: Leave release for manual Billing Store review
+        run: echo "Base release $RELEASE_VERSION is validated in License Master and remains pending manual Billing Store approval."
