@@ -1,15 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-// License Master V2 owns its administrator authentication.  The canonical
-// Supabase project is the dedicated OrbitFS-License-Master-V2 project.
-// Do not fall back to the retired Supabase project here.
+// Canonical License Master V2 administrator authentication source.
+// This must stay on the dedicated License Master Supabase project, not the
+// retired/legacy project that was previously used by this route.
 const SUPABASE_URL = "https://fwtremoroucmdyjkbfnp.supabase.co";
-const SUPABASE_ANON_KEY =
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  process.env.SUPABASE_ANON_KEY ||
-  process.env.SUPABASE_KEY ||
-  "sb_publishable__JcR8IxEj__iwetiIajyFQ_Fa3Rl8Mc";
+const SUPABASE_ANON_KEY = "sb_publishable__JcR8IxEj__iwetiIajyFQ_Fa3Rl8Mc";
 const adminEmails = new Set((process.env.ADMIN_EMAILS || "lucas.kerim@gmail.com").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean));
 
 async function body(req: IncomingMessage) {
