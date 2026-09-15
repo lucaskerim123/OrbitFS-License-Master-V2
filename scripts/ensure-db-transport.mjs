@@ -30,8 +30,6 @@ const patch = (path, marker, replacement) => {
     return;
   }
   if (!source.includes(marker)) {
-    // This file may already use a different database transport (for example
-    // Supabase REST). It does not need the pg/DATABASE_URL transport patch.
     console.log(`Skipping DB transport patch for ${path}: marker not present`);
     return;
   }
@@ -55,6 +53,12 @@ patch(
   "api/release-capture.ts",
   'const dbUrl=String(process.env.DATABASE_URL||"").replace(/[?&]sslmode=[^&]+/i,"");',
   'const dbUrl=normalizeDatabaseUrl(process.env.DATABASE_URL||"");',
+);
+
+patch(
+  "src/server.ts",
+  'const databaseUrl = String(process.env.DATABASE_URL || "").replace(/[?&]sslmode=[^&]+/i, "");\nconst db = databaseUrl ? new Pool({ connectionString: databaseUrl, max: 5, ssl: { rejectUnauthorized: false } }) : null;',
+  'const databaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL || "");\nconst db = databaseUrl ? new Pool({ connectionString: databaseUrl, max: 5, connectionTimeoutMillis: 5000, idleTimeoutMillis: 10000, statement_timeout: 8000, ssl: { rejectUnauthorized: false } }) : null;',
 );
 
 console.log("Supabase Postgres connections normalized for Vercel serverless transport");
