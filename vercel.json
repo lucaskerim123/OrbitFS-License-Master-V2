@@ -4,15 +4,11 @@
   "installCommand": "npm ci",
   "buildCommand": "npm run build",
   "functions": {
-    "api/**/*.ts": { "maxDuration": 10, "includeFiles": "web/admin.html" }
+    "api/**/*.ts": { "maxDuration": 15, "includeFiles": "web/admin.html" }
   },
   "routes": [
+    { "src": "/?$", "dest": "/admin" },
     { "src": "/admin/?$", "dest": "/api/admin" },
-    { "src": "/api/admin-control-login/?$", "dest": "/api/admin-control-login" },
-    { "src": "/api/admin/license-master/settings/?$", "dest": "/api/admin-license-master-settings" },
-    { "src": "/api/admin/license-master/?$", "dest": "/api/admin-license-master" },
-    { "src": "/api/admin/licenses/runtime-clients/?$", "dest": "/api/admin-runtime-clients" },
-    { "src": "/api/admin/licenses/(?<licenseId>[^/]+)/control/?$", "dest": "/api/admin-license-control?id=$licenseId" },
     { "handle": "filesystem" }
   ]
 }
