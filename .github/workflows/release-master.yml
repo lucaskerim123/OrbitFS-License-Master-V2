@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 env:
-  MASTER_API_URL: ${{ secrets.MASTER_API_URL }}
+  MASTER_API_URL: ${{ secrets.MASTER_API_URL || 'https://www.incendiarynetworks.cc' }}
   MASTER_API_TOKEN: ${{ secrets.MASTER_API_TOKEN }}
   SOURCE_REPO: lucaskerim123/V1-vercel-base
   SOURCE_BRANCH: base-release
@@ -49,7 +49,7 @@ jobs:
         with:
           repository: lucaskerim123/V1-vercel-base
           ref: ${{ steps.resolve.outputs.source_sha }}
-          token: ${{ secrets.SOURCE_GITHUB_TOKEN }}
+          token: ${{ secrets.SOURCE_GITHUB_TOKEN || github.token }}
           fetch-depth: 0
 
       - name: Setup Node
@@ -74,45 +74,77 @@ jobs:
             --exclude='./node_modules' \
             --exclude='./release-package' \
             .
-          sha256sum release-package/*
+          test -s "release-package/orbitfs-base-${RELEASE_VERSION}.tar.gz"
+          sha256sum "release-package/orbitfs-base-${RELEASE_VERSION}.tar.gz"
+
+      - name: Validate License Master connection
+        shell: bash
+        env:
+          API_ROOT: ${{ env.MASTER_API_URL }}
+          MASTER_TOKEN: ${{ env.MASTER_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          [[ -n "$API_ROOT" ]] || { echo "MASTER_API_URL is not configured."; exit 1; }
+          [[ -n "$MASTER_TOKEN" ]] || { echo "MASTER_API_TOKEN GitHub Actions secret is not configured."; exit 1; }
+          API_ROOT="${API_ROOT%/}"
+          API_ROOT="${API_ROOT%/api}"
+          echo "License Master API: ${API_ROOT}/api"
+          curl --fail-with-body -sS --connect-timeout 10 --max-time 30 "${API_ROOT}/api/health" \
+            -H "Authorization: Bearer $MASTER_TOKEN" \
+            -H "Accept: application/json" >/dev/null
 
       - name: Capture release in License Master
         id: capture
         shell: bash
         env:
+          API_ROOT: ${{ env.MASTER_API_URL }}
+          MASTER_TOKEN: ${{ env.MASTER_API_TOKEN }}
           SOURCE_SHA: ${{ steps.resolve.outputs.source_sha }}
           RELEASE_VERSION: ${{ steps.resolve.outputs.release_version }}
         run: |
           set -euo pipefail
-          RESPONSE=$(curl --fail-with-body -sS -X POST "$MASTER_API_URL/api/release-capture" \
-            -H "Authorization: Bearer $MASTER_API_TOKEN" \
+          API_ROOT="${API_ROOT%/}"
+          API_ROOT="${API_ROOT%/api}"
+          RESPONSE=$(curl --fail-with-body -sS -X POST "${API_ROOT}/api/release-capture" \
+            -H "Authorization: Bearer $MASTER_TOKEN" \
             -H "Content-Type: application/json" \
             -d "{\"kind\":\"base\",\"version\":\"$RELEASE_VERSION\",\"sourceCommit\":\"$SOURCE_SHA\"}")
           echo "$RESPONSE" > release-capture.json
           RELEASE_ID=$(python3 -c 'import json; print(json.load(open("release-capture.json"))["release"]["id"])')
+          [[ -n "$RELEASE_ID" ]] || { echo "License Master did not return a release ID."; exit 1; }
           echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
 
       - name: Upload artifact to License Master
         env:
+          API_ROOT: ${{ env.MASTER_API_URL }}
+          MASTER_TOKEN: ${{ env.MASTER_API_TOKEN }}
           RELEASE_ID: ${{ steps.capture.outputs.release_id }}
         run: |
           set -euo pipefail
-          FILE=$(find release-package -type f -name '*.tar.gz' | head -1)
+          API_ROOT="${API_ROOT%/}"
+          API_ROOT="${API_ROOT%/api}"
+          FILE=$(find release-package -type f -name '*.tar.gz' -print -quit)
+          [[ -n "$FILE" && -s "$FILE" ]] || { echo "Release artifact was not created."; exit 1; }
           SHA=$(sha256sum "$FILE" | awk '{print $1}')
-          curl --fail-with-body -sS -X POST "$MASTER_API_URL/api/v1/releases/$RELEASE_ID/artifact" \
-            -H "Authorization: Bearer $MASTER_API_TOKEN" \
+          curl --fail-with-body -sS -X POST "${API_ROOT}/api/v1/releases/$RELEASE_ID/artifact" \
+            -H "Authorization: Bearer $MASTER_TOKEN" \
             -H "Content-Type: application/gzip" \
             -H "X-Artifact-SHA256: $SHA" \
             --data-binary "@$FILE"
 
       - name: Validate release in License Master
         env:
+          API_ROOT: ${{ env.MASTER_API_URL }}
+          MASTER_TOKEN: ${{ env.MASTER_API_TOKEN }}
           RELEASE_ID: ${{ steps.capture.outputs.release_id }}
         run: |
           set -euo pipefail
-          curl --fail-with-body -sS -X POST "$MASTER_API_URL/api/v1/releases/$RELEASE_ID/validate" \
-            -H "Authorization: Bearer $MASTER_API_TOKEN" \
-            -H "Content-Type: application/json" -d '{}'
+          API_ROOT="${API_ROOT%/}"
+          API_ROOT="${API_ROOT%/api}"
+          curl --fail-with-body -sS -X POST "${API_ROOT}/api/v1/releases/$RELEASE_ID/validate" \
+            -H "Authorization: Bearer $MASTER_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{}'
 
       - name: Leave release for manual Billing Store review
         env:
