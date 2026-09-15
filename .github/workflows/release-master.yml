@@ -26,7 +26,7 @@ permissions:
   deployments: write
 
 concurrency:
-  group: orbitfs-release-${{ github.ref }}
+  group: orbitfs-release-${{ github.event.action || github.ref }}
   cancel-in-progress: false
 
 env:
@@ -35,34 +35,42 @@ env:
 
 jobs:
   release:
-    if: github.event_name == 'workflow_dispatch' || vars.ORBITFS_RELEASE_AUTOMATION == 'true'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve source repository
+      - name: Resolve source repository and channel
         id: source
         shell: bash
         run: |
+          set -euo pipefail
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             if [[ "${{ inputs.component }}" == "base" ]]; then
               echo "repo=lucaskerim123/V1-vercel-base" >> "$GITHUB_OUTPUT"
               echo "branch=base-release" >> "$GITHUB_OUTPUT"
+              echo "channel=base-release" >> "$GITHUB_OUTPUT"
             else
               echo "repo=lucaskerim123/V1-vercel-engine" >> "$GITHUB_OUTPUT"
               echo "branch=release-updates" >> "$GITHUB_OUTPUT"
+              echo "channel=release-updates" >> "$GITHUB_OUTPUT"
             fi
           elif [[ "${{ github.event.action }}" == "orbitfs-base-release" ]]; then
+            [[ "${{ github.event.client_payload.source_repo }}" == "lucaskerim123/V1-vercel-base" ]] || { echo "::error::Invalid Base release source repository."; exit 1; }
             echo "repo=lucaskerim123/V1-vercel-base" >> "$GITHUB_OUTPUT"
             echo "branch=base-release" >> "$GITHUB_OUTPUT"
+            echo "channel=base-release" >> "$GITHUB_OUTPUT"
           else
+            [[ "${{ github.event.client_payload.source_repo }}" == "lucaskerim123/V1-vercel-engine" ]] || { echo "::error::Invalid Engine release source repository."; exit 1; }
             echo "repo=lucaskerim123/V1-vercel-engine" >> "$GITHUB_OUTPUT"
             echo "branch=release-updates" >> "$GITHUB_OUTPUT"
+            echo "channel=release-updates" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v4
+      - name: Checkout release channel
+        uses: actions/checkout@v4
         with:
           repository: ${{ steps.source.outputs.repo }}
-          ref: ${{ steps.source.outputs.branch }}
-          token: ${{ secrets.SOURCE_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          ref: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.source_sha || steps.source.outputs.branch }}
+          token: ${{ secrets.SOURCE_GITHUB_TOKEN }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
@@ -74,13 +82,17 @@ jobs:
         id: release
         shell: bash
         run: |
+          set -euo pipefail
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             COMPONENT_INPUT='${{ inputs.component }}'
             VERSION_INPUT='${{ inputs.version }}'
             AUTOMATIC='${{ inputs.automatic }}'
           else
             COMPONENT_INPUT="$([[ '${{ github.event.action }}' == 'orbitfs-base-release' ]] && echo base || echo update)"
-            VERSION_INPUT="$(node -p "require('./package.json').version" 2>/dev/null || true)"
+            VERSION_INPUT='${{ github.event.client_payload.version }}'
+            if [[ -z "$VERSION_INPUT" ]]; then
+              VERSION_INPUT="$(node -p "require('./package.json').version" 2>/dev/null || true)"
+            fi
             AUTOMATIC='true'
           fi
           if [[ -z "$VERSION_INPUT" || ! "$VERSION_INPUT" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
@@ -90,6 +102,7 @@ jobs:
           echo "component=$COMPONENT_INPUT" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION_INPUT" >> "$GITHUB_OUTPUT"
           echo "automatic=$AUTOMATIC" >> "$GITHUB_OUTPUT"
+          echo "channel=${{ steps.source.outputs.channel }}" >> "$GITHUB_OUTPUT"
           echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Check semantic version is increased
@@ -97,6 +110,7 @@ jobs:
         env:
           VERSION: ${{ steps.release.outputs.version }}
         run: |
+          set -euo pipefail
           git fetch --tags --force
           python3 - <<'PY'
           import os, re, subprocess
@@ -122,13 +136,14 @@ jobs:
         with:
           step: start
           token: ${{ secrets.GITHUB_TOKEN }}
-          env: ${{ steps.release.outputs.component == 'base' && 'orbitfs-base-release' || 'orbitfs-update-release' }}
-          ref: ${{ github.sha }}
-          desc: "OrbitFS License Master release ${{ steps.release.outputs.version }}"
+          env: ${{ steps.release.outputs.channel }}
+          ref: ${{ steps.release.outputs.source_sha }}
+          desc: "OrbitFS License Master release ${{ steps.release.outputs.version }} from ${{ steps.release.outputs.channel }}"
 
       - name: Build release package
         shell: bash
         run: |
+          set -euo pipefail
           npm ci
           npm run build
           mkdir -p release-package
@@ -142,6 +157,7 @@ jobs:
           COMPONENT: ${{ steps.release.outputs.component }}
           VERSION: ${{ steps.release.outputs.version }}
         run: |
+          set -euo pipefail
           RESPONSE=$(curl --fail-with-body -sS -X POST "$MASTER_API_URL/api/release-capture" \
             -H "Authorization: Bearer $MASTER_API_TOKEN" \
             -H "Content-Type: application/json" \
