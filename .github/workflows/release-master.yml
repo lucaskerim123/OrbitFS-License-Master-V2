@@ -36,7 +36,7 @@ jobs:
             SOURCE_SHA=$(gh api repos/lucaskerim123/V1-vercel-base/git/ref/heads/base-release --jq '.object.sha')
           fi
           if [[ -z "${RELEASE_VERSION:-}" ]]; then
-            RELEASE_VERSION=$(gh api repos/lucaskerim123/V1-vercel-base/contents/package.json?ref=base-release --jq '.content' | base64 -d | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')
+            RELEASE_VERSION=$(gh api 'repos/lucaskerim123/V1-vercel-base/contents/package.json?ref=base-release' --jq '.content' | base64 -d | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')
           fi
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid source commit SHA: $SOURCE_SHA"; exit 1; }
           [[ "$RELEASE_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]] || { echo "Invalid SemVer version: $RELEASE_VERSION"; exit 1; }
@@ -67,8 +67,13 @@ jobs:
           npm ci
           npm run check
           npm run build
+          rm -rf release-package
           mkdir -p release-package
-          tar -czf "release-package/orbitfs-base-${RELEASE_VERSION}.tar.gz" . --exclude=.git --exclude=node_modules --exclude=release-package
+          tar -czf "release-package/orbitfs-base-${RELEASE_VERSION}.tar.gz" \
+            --exclude='./.git' \
+            --exclude='./node_modules' \
+            --exclude='./release-package' \
+            .
           sha256sum release-package/*
 
       - name: Capture release in License Master
