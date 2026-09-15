@@ -14,7 +14,6 @@ async function ensureSettings() {
   await query("alter table master_license_settings add column if not exists revision bigint not null default 1");
   await query("alter table master_license_settings add column if not exists updated_at timestamptz not null default now()");
   await query("insert into master_license_settings(id) values ('primary') on conflict (id) do nothing");
-  // Keep compatibility with the V1 Base/Engine entitlement issuer contract.
   await query("update master_license_settings set issuer='orbitfs-website' where id='primary' and issuer='orbitfs-license-master'");
 }
 
@@ -23,7 +22,7 @@ export async function masterStatus(req: Request) {
   await ensureSettings();
   const [settings, products] = await Promise.all([
     query<any>("select * from master_license_settings where id='primary' limit 1"),
-    query<any>("select * from products order by code asc limit 500"),
+    query<any>("select * from license_products order by code asc limit 500"),
   ]);
   const base = String(process.env.SITE_URL || "https://incendiarynetworks.cc").replace(/\/$/, "");
   return { ok: true, authority: "license-master", config: { url: `${base}/api`, versionedUrl: `${base}/api/license/v1`, masterConfigured: Boolean(process.env.MASTER_API_TOKEN), billingConfigured: Boolean(process.env.BILLING_API_TOKEN), deployerConfigured: Boolean(process.env.DEPLOYER_API_TOKEN) }, revision: revision(), products: { products: products.rows }, settings: { settings: settings.rows[0] || null } };
