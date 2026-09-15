@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 const helper = [
   'const normalizeDatabaseUrl = (value) => {',
@@ -23,6 +23,10 @@ const helper = [
 ].join("\n");
 
 const patch = (path, marker, replacement) => {
+  if (!existsSync(path)) {
+    console.log(`Skipping DB transport patch for ${path}: file not present`);
+    return;
+  }
   let source = readFileSync(path, "utf8");
   if (source.includes("const normalizeDatabaseUrl = (value) =>")) {
     if (source.includes(marker)) source = source.replace(marker, replacement, 1);
