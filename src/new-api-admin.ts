@@ -14,6 +14,7 @@ export async function masterStatus(req: Request) {
     authority: "license-master",
     config: {
       url: `${base}/api`,
+      versionedUrl: `${base}/api/license/v1`,
       masterConfigured: Boolean(process.env.MASTER_API_TOKEN),
       billingConfigured: Boolean(process.env.BILLING_API_TOKEN),
       deployerConfigured: Boolean(process.env.DEPLOYER_API_TOKEN),
@@ -22,6 +23,66 @@ export async function masterStatus(req: Request) {
     products: { products: products.rows },
     settings: { settings: settings.rows[0] || null },
   };
+}
+
+async function ensureSettings() {
+  await query(`create table if not exists master_license_settings (
+    id text primary key,
+    enabled boolean not null default true,
+    issuer text not null default 'orbitfs-license-master',
+    audience text not null default 'orbitfs-runtime',
+    entitlement_ttl_seconds integer not null default 10800,
+    grace_seconds integer not null default 604800,
+    api_mode text not null default 'online',
+    allow_offline_grace boolean not null default true,
+    revision bigint not null default 1,
+    updated_at timestamptz not null default now()
+  )`);
+  await query("alter table master_license_settings add column if not exists enabled boolean not null default true");
+  await query("alter table master_license_settings add column if not exists issuer text not null default 'orbitfs-license-master'");
+  await query("alter table master_license_settings add column if not exists audience text not null default 'orbitfs-runtime'");
+  await query("alter table master_license_settings add column if not exists entitlement_ttl_seconds integer not null default 10800");
+  await query("alter table master_license_settings add column if not exists grace_seconds integer not null default 604800");
+  await query("alter table master_license_settings add column if not exists api_mode text not null default 'online'");
+  await query("alter table master_license_settings add column if not exists allow_offline_grace boolean not null default true");
+  await query("alter table master_license_settings add column if not exists revision bigint not null default 1");
+  await query("alter table master_license_settings add column if not exists updated_at timestamptz not null default now()");
+  await query("insert into master_license_settings(id) values ('primary') on conflict (id) do nothing");
+}
+
+export async function licenseSettings(req: Request, input?: Record<string, unknown>) {
+  await requireAdmin(req);
+  await ensureSettings();
+  if (!input) {
+    const row = (await query<any>("select id,enabled,issuer,audience,entitlement_ttl_seconds,grace_seconds,api_mode,allow_offline_grace,revision,updated_at from master_license_settings where id='primary' limit 1")).rows[0];
+    return { ok: true, settings: row || null };
+  }
+
+  const current = (await query<any>("select * from master_license_settings where id='primary' limit 1")).rows[0] || {};
+  const requestedMode = String(input.api_mode ?? input.mode ?? current.api_mode ?? "online").toLowerCase();
+  const mode = requestedMode === "active" ? "online" : requestedMode;
+  if (!["online", "offline", "maintenance"].includes(mode)) throw new AuthorityError(400, "api_mode must be online, offline, or maintenance", "INVALID_API_MODE");
+
+  const enabled = input.enabled === undefined ? current.enabled !== false : Boolean(input.enabled);
+  const ttl = Number(input.entitlement_ttl_seconds ?? current.entitlement_ttl_seconds ?? 10800);
+  const grace = Number(input.grace_seconds ?? current.grace_seconds ?? 604800);
+  const issuer = String(input.issuer ?? current.issuer ?? "orbitfs-license-master").trim();
+  const audience = String(input.audience ?? current.audience ?? "orbitfs-runtime").trim();
+  const allowOfflineGrace = input.allow_offline_grace === undefined ? current.allow_offline_grace !== false : Boolean(input.allow_offline_grace);
+  if (!issuer || !audience) throw new AuthorityError(400, "Issuer and audience are required", "INVALID_SETTINGS");
+  if (!Number.isFinite(ttl) || !Number.isFinite(grace)) throw new AuthorityError(400, "TTL and grace period must be valid numbers", "INVALID_SETTINGS");
+
+  const revisionNumber = Math.max(1, Math.floor(Number(current.revision || 0) + 1));
+  const row = (await query<any>(
+    `update master_license_settings
+       set enabled=$1,issuer=$2,audience=$3,entitlement_ttl_seconds=$4,grace_seconds=$5,
+           api_mode=$6,allow_offline_grace=$7,revision=$8,updated_at=now()
+     where id='primary'
+     returning id,enabled,issuer,audience,entitlement_ttl_seconds,grace_seconds,api_mode,allow_offline_grace,revision,updated_at`,
+    [enabled, issuer, audience, Math.max(60, Math.floor(ttl)), Math.max(0, Math.floor(grace)), mode, allowOfflineGrace, revisionNumber],
+  )).rows[0];
+  if (!row) throw new AuthorityError(503, "License Master settings row is unavailable", "SETTINGS_UNAVAILABLE");
+  return { ok: true, settings: row };
 }
 
 export async function runtimeClients(req: Request) {
