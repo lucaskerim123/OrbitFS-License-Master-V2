@@ -8,24 +8,30 @@ async function resolveUser(req:Request){
   const auth=String(req.headers.get("authorization")||"").replace(/^Bearer\s+/i,"").trim();
   const billingToken=String(process.env.BILLING_API_TOKEN||"").trim();
   const serviceUserId=String(req.headers.get("x-orbit-user-id")||"").trim();
-  if(auth&&billingToken&&serviceUserId&&auth===billingToken)return {id:serviceUserId};
+  if(serviceUserId){
+    if(!auth||!billingToken||auth!==billingToken)throw Object.assign(new Error("Billing service authentication failed"),{status:401});
+    return {id:serviceUserId};
+  }
   return (await requireOrbitUser(req)).user;
 }
 
 async function restRows(table:string,params:Record<string,string>={},fallback:any[]=[]){
   const base=String(process.env.SUPABASE_URL||"").replace(/\/+$/,"");
   const key=String(process.env.SUPABASE_SERVICE_ROLE_KEY||"").trim();
-  if(!base||!key)return fallback;
+  if(!base||!key)throw Object.assign(new Error("License Master Supabase service configuration is missing"),{status:503});
   const url=new URL(`${base}/rest/v1/${table}`);
   for(const [k,v] of Object.entries(params))url.searchParams.set(k,v);
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),4000);
   try{
     const r=await fetch(url,{headers:{apikey:key,authorization:`Bearer ${key}`,accept:"application/json"},cache:"no-store",signal:controller.signal});
-    if(!r.ok)return fallback;
+    if(!r.ok)throw Object.assign(new Error(`License Master database request failed (${r.status})`),{status:503});
     const data=await r.json().catch(()=>fallback);
     return Array.isArray(data)?data:fallback;
-  }catch{return fallback}finally{clearTimeout(timer)}
+  }catch(e:any){
+    if(e?.name==="AbortError")throw Object.assign(new Error("License Master database request timed out"),{status:504});
+    throw e;
+  }finally{clearTimeout(timer)}
 }
 
 export async function GET(req:Request){
@@ -59,16 +65,6 @@ export async function GET(req:Request){
       events=eventRows;releases=releaseRows;
     }
 
-    return Response.json({
-      settings:{enabled:true,customer_deploy_enabled:true,supabase_oauth_enabled:true,vercel_oauth_enabled:true},
-      bindings:bindingRows,
-      connections:connectionRows,
-      installations:installationRows,
-      events,
-      releases,
-      latestRelease:null,
-      latestBase:null,
-      latestUpdate:null
-    },{headers:{"cache-control":"no-store"}});
+    return Response.json({settings:{enabled:true,customer_deploy_enabled:true,supabase_oauth_enabled:true,vercel_oauth_enabled:true},bindings:bindingRows,connections:connectionRows,installations:installationRows,events,releases,latestRelease:null,latestBase:null,latestUpdate:null},{headers:{"cache-control":"no-store"}});
   }catch(e){return httpError(e)}
 }
