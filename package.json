@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/dev.ts",
-    "build": "node scripts/normalize-license-key-format.mjs && node scripts/ensure-db-transport.mjs && node scripts/ensure-admin-auth-route.mjs && node scripts/ensure-master-panel.mjs && node scripts/ensure-license-rotate-ui.mjs && node scripts/ensure-billing-license-control.mjs && node scripts/ensure-admin-license-return.mjs && tsc --noEmit --noCheck && echo OrbitFS-License-Master build completed",
-    "typecheck": "node scripts/ensure-admin-license-return.mjs && tsc --noEmit"
+    "build": "node scripts/normalize-license-key-format.mjs && node scripts/ensure-db-transport.mjs && node scripts/ensure-admin-auth-route.mjs && node scripts/ensure-master-panel.mjs && node scripts/ensure-license-rotate-ui.mjs && node scripts/ensure-billing-license-control.mjs && node scripts/ensure-admin-license-return.mjs && node scripts/ensure-license-master-control-center.mjs && tsc --noEmit --noCheck && echo OrbitFS-License-Master build completed",
+    "typecheck": "node scripts/ensure-admin-license-return.mjs && node scripts/ensure-license-master-control-center.mjs && tsc --noEmit"
   },
   "dependencies": { "pg": "^8.23.0" },
   "devDependencies": { "@types/node": "^22", "@types/pg": "^8.15.5", "typescript": "^5.9.2" }
