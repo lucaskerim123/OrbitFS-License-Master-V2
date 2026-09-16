@@ -1,94 +1,149 @@
-# OrbitFS License API Architecture
+# OrbitFS Two-System Architecture
 
-The License Master API is the central authority for OrbitFS customer, product, entitlement, licence, installation, activation, enforcement, and release-eligibility state.
+## System 1 — License Master / Release / Deploy
 
-## Canonical topology
+System 1 is the authority. It owns the licensing state and the release/deployment control plane.
 
 ```text
-Customer OrbitFS Products ─────┐
-                              │
-V2 Billing Store ──────────────┼──> License Master API ──> Supabase/PostgreSQL
-                              │
-Release / Deployment System ──┘
+                         SYSTEM 1
+        ┌─────────────────────────────────────┐
+        │ OrbitFS License Master              │
+        │                                     │
+        │ License authority                   │
+        │ License issue / validate / enforce  │
+        │ Products and entitlements           │
+        │ Release system                      │
+        │ Base deploy system                  │
+        │ Installation state                  │
+        │ Audit / authority settings          │
+        └───────────────┬─────────────────────┘
+                        │
+                 internal services
+                        │
+                 Supabase/PostgreSQL
+
+        External boundary only:
+                        │
+                        ▼
+              /api/* License Master API
+                        ▲
+                        │
+             System 2 / customer systems
 ```
 
-The Billing Store owns storefront, checkout, orders, invoices, customer portal, billing UI, and commercial presentation. It MUST use the License Master API for licence/product/entitlement state and MUST NOT perform direct database writes against License Master tables.
+### The License Master panel
 
-Customer products authenticate to the License Master API to register installations and validate their licence/entitlements. They do not receive database credentials for the License Master database.
+The administrator panel is part of System 1. It does **not** call the public License Master API to perform its own work.
 
-The release/deployment system publishes release metadata and deployment state through an authenticated API. The License Master API is authoritative for whether a customer, installation, product, channel, and version are eligible. The Billing Store decides how that eligible release/deployment is presented in its authenticated customer/admin UI.
+```text
+Admin browser
+    │
+    ▼
+/admin panel controller
+    │
+    ▼
+License Master internal services
+    │
+    ▼
+License Master DB
+```
 
-## Authority boundaries
+There is no panel → `/api/*` → panel-service loop and no panel use of `MASTER_API_TOKEN` for normal administration.
 
-### License Master API owns
+The panel's internal operations include:
 
-- Customers and customer references used by licensing
-- Product definitions and product components
-- Entitlements and entitlement rules
-- Licence records and licence keys
-- Installation registration and installation limits
-- Activation and validation
-- Suspension, termination, blocking, and enforcement state
-- Release eligibility and update policy
-- Release channels and compatible product/version rules
-- API clients and service authentication
-- Audit records for licensing operations
+- listing and controlling licences
+- issuing licences manually
+- managing products
+- reading authority settings
+- creating/validating/publishing/pausing/withdrawing releases
+- viewing installations
+- viewing deployment jobs
 
-### V2 Billing Store owns
+The API is only the external doorway into System 1.
 
-- Public storefront
-- Product merchandising and checkout
-- Orders and invoices
-- Payment providers
-- Customer portal UI
-- Billing/customer support UI
-- Commercial visibility and presentation
+## System 2 — Billing Storefront
 
-The Store may cache API responses for UI performance, but License Master remains authoritative for licence state.
+System 2 owns commerce and customer-facing billing functionality.
 
-### Release/deployment system owns
+```text
+Customer
+   │
+   ▼
+V2 Billing Store
+   │
+   │ checkout / orders / invoices / customer account
+   │
+   └──── authenticated request ────> System 1 API
+                                      │
+                                      ▼
+                              License Master service
+                                      │
+                                      ▼
+                                    DB
+                                      │
+                                      ▼
+                              license key / result
+                                      │
+                                      ▼
+                                Billing Store
+```
 
-- Build/package creation
-- Deployment jobs
-- Deployment provider integration
-- Deployment execution state and logs
-- Release publication workflow
+System 2 owns:
 
-It asks License Master whether a customer/installation is entitled to a release before serving or deploying it.
+- storefront and product presentation
+- checkout
+- orders
+- invoices
+- payment providers
+- customer accounts and portal
+- commercial/billing UI
 
-## API groups
+System 2 does **not** write directly to License Master licensing tables.
 
-Canonical production License Master site:
+## License issuance flow
 
-`{SITE_URL}`
+Example: a customer buys an OrbitFS Base licence in System 2.
 
-Canonical public API base:
+1. System 2 records the order/payment.
+2. System 2 sends a licence-issuance request to System 1's `/api/*` boundary using `BILLING_API_TOKEN`.
+3. System 1's API authenticates the Billing Store.
+4. The API invokes the internal License Master licensing service.
+5. The licensing service creates the licence directly in the License Master database.
+6. System 1 returns the generated licence key and authoritative licence state to System 2.
+7. System 2 stores/displays the returned customer-facing result.
 
-`{SITE_URL}/api`
+If System 1 is unavailable, System 2 may retain the paid order as awaiting issuance; it must not manufacture a License Master licence itself.
 
-All public and caller-facing License Master endpoints use the canonical `/api/*` contract. No OrbitFS application endpoint uses `/api/v1/*`.
+## Release flow
 
-Supabase's own `/auth/v1/*`, `/rest/v1/*` and `/storage/v1/*` service endpoints are external Supabase contracts and remain unchanged.
+Releases are controlled by System 1 and remain manually operated.
 
-### Public/runtime
+```text
+V1-vercel-base / V1-vercel-engine
+                │
+                ▼
+        System 1 Release System
+                │
+       draft → validate → publish
+                │
+                ▼
+       manual handoff to System 2
+```
 
-- `GET /api/health`
-- `GET /api/license/public-key`
-- `POST /api/license/validate`
-- `GET /api/license/revision`
-- `GET /api/releases`
-- `GET /api/releases/latest`
+System 1 owns release metadata, eligibility and deployment control. System 2 receives the published release information for customer/storefront presentation and customer-side update workflows.
 
-### Billing service
+## External API boundary
 
-The Billing Store public origin is configured separately as `BILLING_SITE_URL=https://orbitfsstore.vercel.app`. This variable is a site origin only; it is not the License Master API base.
+The public API exists for callers outside System 1, including:
 
-The Billing Store calls the License Master at `{SITE_URL}/api/{endpoint}` using its dedicated `BILLING_API_TOKEN` and is not given the master administrative token.
+- V2 Billing Store
+- customer OrbitFS runtimes
+- deployment/client systems
+- other authorised OrbitFS services
 
-### Deployment service
+The public API is **not** the internal transport layer for the License Master panel.
 
-The deployment service uses `DEPLOYER_API_TOKEN` for installation and deployment operations and calls `{SITE_URL}/api/{endpoint}`.
+`MASTER_API_TOKEN`, `BILLING_API_TOKEN`, and `DEPLOYER_API_TOKEN` are service credentials for external service-to-service calls. Browser administration must not require the master service token.
 
-### Master administration
-
-`MASTER_API_TOKEN` is reserved for privileged License Master operations and automation. Browser clients should not receive it.
+Supabase/PostgreSQL remains the database layer. It is not the business-system boundary between System 1 and its own panel.
