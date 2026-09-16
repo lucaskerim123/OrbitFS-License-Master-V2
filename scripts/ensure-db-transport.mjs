@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
 const helper = [
   'const normalizeDatabaseUrl = (value) => {',
@@ -9,9 +9,10 @@ const helper = [
   '    const match = url.hostname.match(/^db\\.([a-z0-9]+)\\.supabase\\.co$/i);',
   '    if (!match) return raw;',
   '    const projectRef = match[1];',
-  '    const region = String(process.env.SUPABASE_DB_REGION || "us-west-2").trim();',
-  '    const poolerHost = String(process.env.SUPABASE_POOLER_HOST || "aws-0-" + region + ".pooler.supabase.com").trim();',
-  '    url.hostname = poolerHost;',
+  '    const poolerHost = String(process.env.SUPABASE_POOLER_HOST || "").trim();',
+  '    const region = String(process.env.SUPABASE_DB_REGION || "").trim();',
+  '    if (!poolerHost && !region) return raw;',
+  '    url.hostname = poolerHost || "aws-0-" + region + ".pooler.supabase.com";',
   '    url.port = "6543";',
   '    if (url.username === "postgres") url.username = "postgres." + projectRef;',
   '    return url.toString();',
@@ -62,7 +63,13 @@ patch(
 patch(
   "src/server.ts",
   'const databaseUrl = String(process.env.DATABASE_URL || "").replace(/[?&]sslmode=[^&]+/i, "");\nconst db = databaseUrl ? new Pool({ connectionString: databaseUrl, max: 5, ssl: { rejectUnauthorized: false } }) : null;',
-  'const databaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL || "");\nconst db = databaseUrl ? new Pool({ connectionString: databaseUrl, max: 5, connectionTimeoutMillis: 5000, idleTimeoutMillis: 10000, statement_timeout: 8000, ssl: { rejectUnauthorized: false } }) : null;',
+  'const databaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL || "");\nconst db = databaseUrl ? new Pool({ connectionString: databaseUrl, max: 1, connectionTimeoutMillis: 5000, idleTimeoutMillis: 10000, statement_timeout: 8000, ssl: { rejectUnauthorized: false } }) : null;',
+);
+
+patch(
+  "src/new-api-authority.ts",
+  'const databaseUrl = String(process.env.DATABASE_URL || "").replace(/[?&]sslmode=[^&]+/i, "");\nconst db = databaseUrl ? new Pool({ connectionString: databaseUrl, max: 5, ssl: { rejectUnauthorized: false } }) : null;',
+  'const databaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL || "");\nconst db = databaseUrl ? new Pool({ connectionString: databaseUrl, max: 1, connectionTimeoutMillis: 5000, idleTimeoutMillis: 10000, statement_timeout: 8000, ssl: { rejectUnauthorized: false } }) : null;',
 );
 
 console.log("Supabase Postgres connections normalized for Vercel serverless transport");
