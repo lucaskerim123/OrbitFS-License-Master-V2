@@ -1,5 +1,6 @@
 import { query } from './new-api-db.js';
-import { adminLicenseControl, issueLicense, requireAdmin } from './new-api-authority.js';
+import { adminLicenseControl } from './new-api-admin.js';
+import { issueLicense, requireAdmin } from './new-api-authority.js';
 
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { 'cache-control': 'no-store' } });
 const body = async (req: Request) => { const v = await req.json().catch(() => ({})); return v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {}; };
