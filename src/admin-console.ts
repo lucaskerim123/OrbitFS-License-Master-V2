@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { query } from './new-api-db.js';
+import { db, query } from './new-api-db.js';
 import { adminLicenseControl } from './new-api-admin.js';
 import { requireAdmin } from './new-api-authority.js';
 
@@ -12,8 +12,8 @@ const PRODUCT_CODES = ['orbitfs_base','orbitfs_mcp','orbitfs_apex','orbitfs_stud
 async function issueLicenseInternal(input: Record<string, unknown>) {
   const orderRef = String(input.orderRef || '').trim();
   if (!orderRef || orderRef.length > 200) return json({ error: 'Order reference is required' }, 400);
-  const client = await import('./new-api-db.js').then(m => m.pool?.connect?.()).catch(() => null);
-  if (!client) return json({ error: 'Database is not configured' }, 503);
+  if (!db) return json({ error: 'Database is not configured' }, 503);
+  const client = await db.connect();
   let created = false;
   try {
     await client.query('begin');
