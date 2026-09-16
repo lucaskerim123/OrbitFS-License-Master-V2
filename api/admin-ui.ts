@@ -14,7 +14,8 @@ export default async function adminUi(req: IncomingMessage, res: ServerResponse)
   const requestUrl = `https://${host}${req.url || "/admin"}`;
   const url = new URL(requestUrl);
   try {
-    if (req.method === "GET" && (url.pathname === "/admin" || url.pathname === "/admin/")) {
+    const routedPath = url.searchParams.get("path");
+    if (req.method === "GET" && !routedPath && (url.pathname === "/admin" || url.pathname === "/admin/" || url.pathname === "/api/admin-ui")) {
       const html = readFileSync(new URL("../web/admin.html", import.meta.url), "utf8");
       res.statusCode = 200;
       res.setHeader("content-type", "text/html; charset=utf-8");
@@ -22,12 +23,13 @@ export default async function adminUi(req: IncomingMessage, res: ServerResponse)
       res.end(html);
       return;
     }
+    const internalPath = routedPath ? `/admin/${routedPath.replace(/^\/+/, "")}` : url.pathname;
     const response = await handleAdminConsole(new Request(requestUrl, {
       method: req.method,
       headers: new Headers(req.headers as Record<string, string>),
       body: ["GET", "HEAD"].includes(String(req.method)) ? undefined : req,
       duplex: "half",
-    } as RequestInit), url.pathname);
+    } as RequestInit), internalPath);
     if (!response) return send(res, 404, { error: "Admin operation not found" });
     res.statusCode = response.status;
     response.headers.forEach((value, key) => res.setHeader(key, value));
