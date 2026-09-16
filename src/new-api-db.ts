@@ -8,8 +8,10 @@ const normalizeDatabaseUrl = (value: string) => {
     const match = url.hostname.match(/^db\.([a-z0-9]+)\.supabase\.co$/i);
     if (!match) return raw;
     const projectRef = match[1];
-    const region = String(process.env.SUPABASE_DB_REGION || "us-west-2").trim();
-    url.hostname = String(process.env.SUPABASE_POOLER_HOST || `aws-0-${region}.pooler.supabase.com`).trim();
+    const poolerHost = String(process.env.SUPABASE_POOLER_HOST || "").trim();
+    const region = String(process.env.SUPABASE_DB_REGION || "").trim();
+    if (!poolerHost && !region) return raw;
+    url.hostname = poolerHost || `aws-0-${region}.pooler.supabase.com`;
     url.port = "6543";
     if (url.username === "postgres") url.username = `postgres.${projectRef}`;
     return url.toString();
@@ -21,7 +23,7 @@ const normalizeDatabaseUrl = (value: string) => {
 const databaseUrl = normalizeDatabaseUrl(String(process.env.DATABASE_URL || ""));
 export const db = databaseUrl ? new Pool({
   connectionString: databaseUrl,
-  max: 5,
+  max: 1,
   connectionTimeoutMillis: 5000,
   idleTimeoutMillis: 10000,
   statement_timeout: 8000,
