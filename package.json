@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/dev.ts",
-    "build": "node scripts/ensure-db-transport.mjs && node scripts/ensure-admin-auth-route.mjs && tsc --noEmit --noCheck && echo OrbitFS-License-Master build completed",
+    "build": "node scripts/ensure-db-transport.mjs && node scripts/ensure-admin-auth-route.mjs && node scripts/ensure-master-panel.mjs && tsc --noEmit --noCheck && echo OrbitFS-License-Master build completed",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": { "pg": "^8.23.0" },
-  "devDependencies": { "@types/node": "^22", "@types/pg": "^8.15.5", "typescript": "^5.9.2" }
+  "devDependencies": { "@types/node": "^22", "@types/pg": "^8.15.2", "typescript": "^5.9.2" }
 }
