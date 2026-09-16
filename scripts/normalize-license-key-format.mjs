@@ -9,6 +9,7 @@ const files = [
 for (const file of files) {
   let source = readFileSync(file, 'utf8');
   source = source.replaceAll('`OFS-', '`ORBITFS-');
+  source = source.replaceAll('return `OFS-', 'return `ORBITFS-');
 
   if (file === 'src/server.ts') {
     const controlStart = source.indexOf('async function control(');
@@ -52,7 +53,31 @@ for (const file of files) {
     }
   }
 
+  if (file === 'src/new-api-authority.ts') {
+    source = source.replace(
+      '  const orderRef = String(input.orderRef || req.headers.get("x-orbitfs-order-ref") || "").trim();\n  if (!orderRef || orderRef.length > 200) throw new AuthorityError(400, "orderRef is required", "INVALID_REQUEST");',
+      '  const orderRef = String(input.orderRef || req.headers.get("x-orbitfs-order-ref") || "").trim();\n  const customerRef = String(input.customerRef || "").trim();\n  if (!orderRef || orderRef.length > 200) throw new AuthorityError(400, "orderRef is required", "INVALID_REQUEST");\n  if (!customerRef || customerRef.length > 200) throw new AuthorityError(400, "customerRef is required", "INVALID_CUSTOMER");'
+    );
+    source = source.replace(
+      '    if (existing) {\n      binding = existing;',
+      '    if (existing) {\n      if (String(existing.customer_ref || "") !== customerRef) throw new AuthorityError(409, "Order reference is already bound to a different customer", "ORDER_CUSTOMER_MISMATCH");\n      if (String(existing.product_code || "") !== String(input.productCode || "orbitfs_base")) throw new AuthorityError(409, "Order reference is already bound to a different product", "ORDER_PRODUCT_MISMATCH");\n      binding = existing;'
+    );
+    source = source.replaceAll('String(input.customerRef || "")', 'customerRef');
+  }
+
+  if (file === 'src/admin-console.ts') {
+    source = source.replace(
+      "  const orderRef = String(input.orderRef || '').trim();\n  if (!orderRef || orderRef.length > 200) return json({ error: 'Order reference is required' }, 400);",
+      "  const orderRef = String(input.orderRef || '').trim();\n  const customerRef = String(input.customerRef || '').trim();\n  if (!orderRef || orderRef.length > 200) return json({ error: 'Order reference is required' }, 400);\n  if (!customerRef || customerRef.length > 200) return json({ error: 'Customer external ID is required' }, 400);"
+    );
+    source = source.replace(
+      "    if (existing) {\n      binding = existing;",
+      "    if (existing) {\n      if (String(existing.customer_ref || '') !== customerRef) return json({ error: 'Order reference is already bound to a different customer' }, 409);\n      if (String(existing.product_code || '') !== String(input.productCode || 'orbitfs_base')) return json({ error: 'Order reference is already bound to a different product' }, 409);\n      binding = existing;"
+    );
+    source = source.replaceAll("String(input.customerRef || '')", "customerRef");
+  }
+
   writeFileSync(file, source);
 }
 
-console.log('OrbitFS license key format and license control normalized');
+console.log('OrbitFS license key format, license control, and issue contract normalized');
