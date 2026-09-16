@@ -1,5 +1,5 @@
 import { query } from './new-api-db.js';
-import { issueLicense, requireAdmin } from './new-api-authority.js';
+import { adminLicenseControl, issueLicense, requireAdmin } from './new-api-authority.js';
 
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { 'cache-control': 'no-store' } });
 const body = async (req: Request) => { const v = await req.json().catch(() => ({})); return v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {}; };
@@ -13,6 +13,8 @@ export async function handleAdminConsole(req: Request, pathname: string): Promis
     const rows = (await query<any>('select * from license_bindings where archived_at is null order by created_at desc limit 500')).rows;
     return json({ licenses: rows.map((x: any) => { const r = { ...x }; delete r.license_key_hash; delete r.license_key_last4; return r; }) });
   }
+  const controlMatch = pathname.match(/^\/admin-api\/licenses\/([^/]+)\/control$/);
+  if (controlMatch && req.method === 'POST') { const input = await body(req); return json(await adminLicenseControl(req, decodeURIComponent(controlMatch[1]), String(input.action || ''))); }
   if (pathname === '/admin-api/licenses/issue' && req.method === 'POST') { const input = await body(req); return json(await issueLicense(internalMasterRequest(input), input), 201); }
   if (pathname === '/admin-api/releases' && req.method === 'GET') return json({ releases: (await query<any>('select * from releases order by updated_at desc limit 500')).rows });
   if (pathname === '/admin-api/releases' && req.method === 'POST') {
