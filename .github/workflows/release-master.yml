@@ -2,19 +2,15 @@ name: OrbitFS Base Release Pipeline
 
 on:
   workflow_dispatch:
-  repository_dispatch:
-    types: [orbitfs-base-release]
 
 permissions:
   contents: read
 
 env:
-  MASTER_API_URL: ${{ secrets.MASTER_API_URL || 'https://www.incendiarynetworks.cc/api' }}
+  MASTER_API_URL: ${{ secrets.MASTER_API_URL || 'https://incendiarynetworks.cc/api' }}
   MASTER_API_TOKEN: ${{ secrets.MASTER_API_TOKEN }}
   SOURCE_REPO: lucaskerim123/V1-vercel-base
   SOURCE_BRANCH: base-release
-  SOURCE_SHA: ${{ github.event.client_payload.source_sha }}
-  RELEASE_VERSION: ${{ github.event.client_payload.version }}
 
 concurrency:
   group: orbitfs-base-release
@@ -29,15 +25,11 @@ jobs:
         id: resolve
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.SOURCE_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.SOURCE_GITHUB_TOKEN || github.token }}
         run: |
           set -euo pipefail
-          if [[ -z "${SOURCE_SHA:-}" ]]; then
-            SOURCE_SHA=$(gh api repos/lucaskerim123/V1-vercel-base/git/ref/heads/base-release --jq '.object.sha')
-          fi
-          if [[ -z "${RELEASE_VERSION:-}" ]]; then
-            RELEASE_VERSION=$(gh api 'repos/lucaskerim123/V1-vercel-base/contents/package.json?ref=base-release' --jq '.content' | base64 -d | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')
-          fi
+          SOURCE_SHA=$(gh api repos/lucaskerim123/V1-vercel-base/git/ref/heads/base-release --jq '.object.sha')
+          RELEASE_VERSION=$(gh api 'repos/lucaskerim123/V1-vercel-base/contents/package.json?ref=base-release' --jq '.content' | base64 -d | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid source commit SHA: $SOURCE_SHA"; exit 1; }
           [[ "$RELEASE_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]] || { echo "Invalid SemVer version: $RELEASE_VERSION"; exit 1; }
           echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
@@ -103,7 +95,7 @@ jobs:
         run: |
           set -euo pipefail
           API_ROOT="${API_ROOT%/}"
-          RESPONSE=$(curl --fail-with-body -sS --connect-timeout 10 --max-time 20 -X POST "${API_ROOT}/release-capture" \
+          RESPONSE=$(curl --fail-with-body -sS --connect-timeout 10 --max-time 30 -X POST "${API_ROOT}/release-capture" \
             -H "Authorization: Bearer $MASTER_TOKEN" \
             -H "Content-Type: application/json" \
             -d "{\"kind\":\"base\",\"version\":\"$RELEASE_VERSION\",\"sourceCommit\":\"$SOURCE_SHA\",\"sourceRepo\":\"$SOURCE_REPO\",\"sourceBranch\":\"$SOURCE_BRANCH\"}")
@@ -142,7 +134,5 @@ jobs:
             -H "Content-Type: application/json" \
             -d '{}'
 
-      - name: Leave release for manual Billing Store review
-        env:
-          RELEASE_VERSION: ${{ steps.resolve.outputs.release_version }}
-        run: echo "Base release $RELEASE_VERSION is validated in License Master and remains pending manual Billing Store approval."
+      - name: Leave release as draft for Billing Store
+        run: echo "Base v${{ steps.resolve.outputs.release_version }} is captured and validated in License Master. It remains a draft for changelog/release review and manual Billing Store finalization."
