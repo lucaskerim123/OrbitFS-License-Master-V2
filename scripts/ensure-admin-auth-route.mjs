@@ -55,7 +55,24 @@ const oldKey = 'const privatePem = () => PRIVATE_KEY ? Buffer.from(PRIVATE_KEY, 
 const newKey = 'const privatePem = () => {\n  let value = String(PRIVATE_KEY || "").trim().replace(/^("\\\')|("\\\')$/g, "").replace(/\\\\n/g, "\\n");\n  if (!value) return "";\n  if (value.includes("-----BEGIN")) return value;\n  const candidates = [value, value.replace(/-/g, "+").replace(/_/g, "/")];\n  for (const candidate of candidates) {\n    try {\n      const decoded = Buffer.from(candidate, "base64");\n      if (!decoded.length) continue;\n      const decodedText = decoded.toString("utf8").trim();\n      if (decodedText.includes("-----BEGIN")) return decodedText.replace(/\\\\n/g, "\\n");\n      for (const type of ["pkcs8", "pkcs1"]) {\n        try {\n          return createPrivateKey({ key: decoded, format: "der", type }).export({ type: "pkcs8", format: "pem" }).toString();\n        } catch {}\n      }\n    } catch {}\n  }\n  return "";\n};';
 if (source.includes(oldKey)) source = source.replace(oldKey, newKey);
 
-writeFileSync(file, source);
+const normalizeDatabaseUrl = (value) => {
+  const raw = String(value || "").replace(/[?&]sslmode=[^&]+/i, "");
+  if (!raw) return raw;
+  try {
+    const url = new URL(raw);
+    const match = url.hostname.match(/^db\.([a-z0-9]+)\.supabase\.co$/i);
+    if (!match) return raw;
+    const projectRef = match[1];
+    const region = String(process.env.SUPABASE_DB_REGION || "us-west-2").trim();
+    const poolerHost = String(process.env.SUPABASE_POOLER_HOST || `aws-0-${region}.pooler.supabase.com`).trim();
+    url.hostname = poolerHost;
+    url.port = "6543";
+    if (url.username === "postgres") url.username = `postgres.${projectRef}`;
+    return url.toString();
+  } catch {
+    return raw;
+  }
+};
 
 const patchDatabaseSource = (path) => {
   let value = readFileSync(path, "utf8");
@@ -73,6 +90,11 @@ const patchDatabaseSource = (path) => {
   writeFileSync(path, value);
 };
 
+// The License Master has no separate api/products.ts module. Product administration
+// is handled by the internal Master service, so the build must never try to patch a
+// non-existent API file here.
+patchDatabaseSource("src/server.ts");
+
 const patchRuntimeAuthority = () => {
   let value = readFileSync(file, "utf8");
   const old = '  const valid = state === "active" && Object.values(result).some((value) => (value as JsonObject).allowed === true);';
@@ -82,7 +104,5 @@ const patchRuntimeAuthority = () => {
   writeFileSync(file, value);
 };
 
-patchDatabaseSource("src/server.ts");
-patchDatabaseSource("api/products.ts");
 patchRuntimeAuthority();
 console.log("Admin authentication, Supabase serverless DB transport, authority state controls, and entitlement key parsing ensured");
