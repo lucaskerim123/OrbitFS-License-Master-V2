@@ -25,7 +25,9 @@ export async function masterStatus(req: Request) {
     query<any>("select * from license_products order by code asc limit 500"),
   ]);
   const base = String(process.env.SITE_URL || "https://incendiarynetworks.cc").replace(/\/$/, "");
-  return { ok: true, authority: "license-master", config: { url: `${base}/api`, versionedUrl: `${base}/api/license/v1`, masterConfigured: Boolean(process.env.MASTER_API_TOKEN), billingConfigured: Boolean(process.env.BILLING_API_TOKEN), deployerConfigured: Boolean(process.env.DEPLOYER_API_TOKEN) }, revision: revision(), products: { products: products.rows }, settings: { settings: settings.rows[0] || null } };
+  const adminPanel = String(process.env.ADMIN_PANEL_URL || "https://panel.incendiarynetworks.cc").replace(/\/$/, "");
+  const apiBase = String(process.env.LICENSE_API_BASE_URL || `${base}/api`).replace(/\/$/, "");
+  return { ok: true, authority: "license-master", config: { url: apiBase, versionedUrl: `${apiBase}/license/v1`, adminPanelUrl: adminPanel, masterConfigured: Boolean(process.env.MASTER_API_TOKEN), billingConfigured: Boolean(process.env.BILLING_API_TOKEN), deployerConfigured: Boolean(process.env.DEPLOYER_API_TOKEN) }, revision: revision(), products: { products: products.rows }, settings: { settings: settings.rows[0] || null } };
 }
 
 export async function licenseSettings(req: Request, input?: Record<string, unknown>) {
