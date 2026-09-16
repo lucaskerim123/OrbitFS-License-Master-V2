@@ -1,6 +1,12 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { query } from "./new-api-db.js";
 import { AuthorityError, requireAdmin, revision } from "./new-api-authority.js";
+
+const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+const newLicenseKey = () => {
+  const value = randomUUID().replaceAll("-", "").toUpperCase();
+  return `ORBITFS-${value.slice(0, 4)}-${value.slice(4, 8)}-${value.slice(8, 12)}`;
+};
 
 async function ensureSettings() {
   await query(`create table if not exists master_license_settings (id text primary key, enabled boolean not null default true, issuer text not null default 'orbitfs-license-master', audience text not null default 'orbitfs-runtime', entitlement_ttl_seconds integer not null default 10800, grace_seconds integer not null default 604800, api_mode text not null default 'online', allow_offline_grace boolean not null default true, revision bigint not null default 1, updated_at timestamptz not null default now())`);
@@ -84,7 +90,19 @@ export async function runtimeClients(req: Request) {
 export async function adminLicenseControl(req: Request, id: string, action: string) {
   const user = await requireAdmin(req);
   if (!id) throw new AuthorityError(400, "License ID is required", "LICENSE_ID_REQUIRED");
-  if (!["activate", "suspend", "unlock", "terminate"].includes(action)) throw new AuthorityError(400, "Invalid license control action", "INVALID_ACTION");
+  if (!["activate", "suspend", "unlock", "terminate", "rotate"].includes(action)) throw new AuthorityError(400, "Invalid license control action", "INVALID_ACTION");
+
+  if (action === "rotate") {
+    const client = await query("select * from license_bindings where id=$1 and archived_at is null limit 1", [id]);
+    const binding = client.rows[0] as Record<string, unknown> | undefined;
+    if (!binding) throw new AuthorityError(404, "License not found", "LICENSE_NOT_FOUND");
+    const licenseKey = newLicenseKey();
+    await query("update license_bindings set license_key_hash=$1,license_key_last4=$2,updated_at=now() where id=$3 and archived_at is null", [hash(licenseKey), licenseKey.slice(-4), id]);
+    await query("insert into license_key_delivery(binding_id,customer_ref,license_key) values($1,$2,$3)", [id, String(binding.customer_ref || ""), licenseKey]);
+    try { await query("insert into audit_log(id,entity_type,entity_id,action,actor_ref,detail) values($1,$2,$3,$4,$5,$6)", [randomUUID(), "licence", id, "admin.rotate", String(user.id || user.email || "admin"), { action, licenseKeyLast4: licenseKey.slice(-4) }]); } catch {}
+    return { ok: true, id, action, status: String(binding.status || "active"), licenseKey };
+  }
+
   const status = action === "activate" ? "active" : action === "suspend" ? "suspended" : action === "terminate" ? "terminated" : null;
   if (status) {
     await query("update license_bindings set status=$1, desired_state=$1, remote_state=$1, updated_at=now() where id=$2 and archived_at is null", [status, id]);
