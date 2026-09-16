@@ -9,6 +9,7 @@
   "rewrites": [
     { "source": "/", "destination": "/api/admin-ui" },
     { "source": "/admin", "destination": "/api/admin-ui" },
-    { "source": "/admin/", "destination": "/api/admin-ui" }
+    { "source": "/admin/", "destination": "/api/admin-ui" },
+    { "source": "/admin/:path*", "destination": "/api/admin-ui" }
   ]
 }
