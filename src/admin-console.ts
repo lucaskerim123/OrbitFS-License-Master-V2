@@ -44,6 +44,10 @@ async function issueLicenseInternal(input: Record<string, unknown>) {
 export async function handleAdminConsole(req: Request, pathname: string): Promise<Response | null> {
   if (!pathname.startsWith('/admin/')) return null;
   await requireAdmin(req);
+  if (pathname === '/admin/health' && req.method === 'GET') {
+    try { await query('select 1'); return json({ ok: true, database: true, service: 'OrbitFS License Master', version: '2.0.0' }); }
+    catch { return json({ ok: true, database: false, service: 'OrbitFS License Master', version: '2.0.0' }); }
+  }
   if (pathname === '/admin/licenses' && req.method === 'GET') {
     const rows = (await query<any>('select * from license_bindings where archived_at is null order by created_at desc limit 500')).rows;
     return json({ licenses: rows.map((x: any) => { const r = { ...x }; delete r.license_key_hash; delete r.license_key_last4; return r; }) });
