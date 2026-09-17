@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 env:
-  MASTER_API_URL: ${{ secrets.MASTER_API_URL || 'https://incendiarynetworks.cc/api' }}
+  MASTER_API_URL: ${{ secrets.MASTER_API_URL || 'https://panel.incendiarynetworks.cc/api' }}
   MASTER_API_TOKEN: ${{ secrets.MASTER_API_TOKEN }}
   SOURCE_REPO: lucaskerim123/V1-vercel-base
   SOURCE_BRANCH: base-release
