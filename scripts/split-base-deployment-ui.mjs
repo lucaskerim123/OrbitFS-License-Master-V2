@@ -9,13 +9,16 @@ if (!html.includes(marker)) {
     '<button class="nav" data-v="base-deployment">Base Deployment</button>'
   );
 
-  html = html.replace(
-    /<section id="deployments" class="view">[\\s\\S]*?<\\/section>/,
-    '<section id="base-deployment" class="view"><div class="card"><h2>Base Deployment</h2><p class="sub">Simple Base deployment control. It always reads the latest <b>base-release</b> branch from <b>lucaskerim123/V1-vercel-base</b> and starts the Base deployment workflow.</p><div class="row" style="margin:16px 0"><button id="runBaseRelease" class="btn primary" style="width:auto" onclick="runBaseRelease()">Apply Latest Base</button><span id="baseReleaseRunMsg" class="sub">Ready.</span></div></div><div class="card"><h3>Latest Base Release</h3><div id="baseDeploymentLatest" class="sub">Loading…</div></div><div class="card"><h3>Recent Base Releases</h3><table class="table"><thead><tr><th>Version</th><th>Channel</th><th>Status</th><th>Source</th><th>Updated</th></tr></thead><tbody id="baseDeploymentBody"></tbody></table></div></section>'
-  );
+  const deploymentStart = html.indexOf('<section id="deployments" class="view">');
+  if (deploymentStart >= 0) {
+    const deploymentEnd = html.indexOf('</section>', deploymentStart);
+    if (deploymentEnd < 0) throw new Error('Deployments section closing tag not found');
+    const replacement = '<section id="base-deployment" class="view"><div class="card"><h2>Base Deployment</h2><p class="sub">Simple Base deployment control. It always reads the latest <b>base-release</b> branch from <b>lucaskerim123/V1-vercel-base</b> and starts the Base deployment workflow.</p><div class="row" style="margin:16px 0"><button id="runBaseRelease" class="btn primary" style="width:auto" onclick="runBaseRelease()">Apply Latest Base</button><span id="baseReleaseRunMsg" class="sub">Ready.</span></div></div><div class="card"><h3>Latest Base Release</h3><div id="baseDeploymentLatest" class="sub">Loading…</div></div><div class="card"><h3>Recent Base Releases</h3><table class="table"><thead><tr><th>Version</th><th>Channel</th><th>Status</th><th>Source</th><th>Updated</th></tr></thead><tbody id="baseDeploymentBody"></tbody></table></div></section>';
+    html = html.slice(0, deploymentStart) + replacement + html.slice(deploymentEnd + '</section>'.length);
+  }
 
   html = html.replace(
-    /<div class="row" style="margin:10px 0"><button id="runBaseRelease"[\\s\\S]*?<\\/div>/,
+    /<div class="row" style="margin:10px 0"><button id="runBaseRelease"[\s\S]*?<\/div>/,
     ''
   );
 
