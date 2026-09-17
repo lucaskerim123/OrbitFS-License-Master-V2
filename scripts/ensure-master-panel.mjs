@@ -62,3 +62,7 @@ if (!server.includes(marker)) {
 }
 
 console.log('Internal License Master panel settings and products ensured; external API remains an integration boundary.');
+
+// This is deliberately the final UI normalization step. Earlier generators may add/replace
+// the Releases/Deployments markup, so the requested two-page split must run after them.
+await import('./finalize-release-deployment-pages.mjs');
